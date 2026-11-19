@@ -14,6 +14,9 @@ from app.schemas.round import (
     CreateSubmissionRequest,
     RoundListResponse,
     RoundResponse,
+    SubmissionConfirmationRequest,
+    SubmissionFailureRequest,
+    SubmissionReservationRequest,
     SubmissionResponse,
 )
 from app.schemas.user import UserResponse
@@ -140,10 +143,88 @@ async def get_round(
 
 
 @router.post(
+    "/{round_id}/submissions/reserve",
+    response_model=SubmissionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Reserve a grocery submission before sending chat message",
+)
+async def reserve_submission(
+    society_id: str,
+    round_id: str,
+    payload: SubmissionReservationRequest,
+    current_user: UserResponse = Depends(get_current_active_user),
+    membership: Dict[str, Any] = Depends(require_society_member),
+) -> SubmissionResponse:
+    """Reserve a submission prior to sending the message in Nexconn chat.
+
+    Locks in the acceptance timestamp before the round deadline expires.
+    """
+    return await round_service.reserve_submission(
+        society_id=society_id,
+        round_id=round_id,
+        user_id=current_user.id,
+        flat_number=membership.get("flat_number", "Unknown"),
+        user_name=current_user.name,
+        data=payload,
+    )
+
+
+@router.post(
+    "/{round_id}/submissions/{submission_id}/confirm",
+    response_model=SubmissionResponse,
+    summary="Confirm a reserved grocery submission with Nexconn message ID",
+)
+async def confirm_submission(
+    society_id: str,
+    round_id: str,
+    submission_id: str,
+    payload: SubmissionConfirmationRequest,
+    current_user: UserResponse = Depends(get_current_active_user),
+    membership: Dict[str, Any] = Depends(require_society_member),
+) -> SubmissionResponse:
+    """Confirm a reserved grocery submission once Nexconn delivers the real message ID.
+
+    Authoritative rule: Remains confirmable even after round closure if reserved on time.
+    """
+    return await round_service.confirm_submission(
+        society_id=society_id,
+        round_id=round_id,
+        submission_id=submission_id,
+        user_id=current_user.id,
+        user_role=membership.get("role", "resident"),
+        data=payload,
+    )
+
+
+@router.post(
+    "/{round_id}/submissions/{submission_id}/fail",
+    response_model=SubmissionResponse,
+    summary="Mark a reserved submission as failed",
+)
+async def fail_submission(
+    society_id: str,
+    round_id: str,
+    submission_id: str,
+    payload: Optional[SubmissionFailureRequest] = None,
+    current_user: UserResponse = Depends(get_current_active_user),
+    membership: Dict[str, Any] = Depends(require_society_member),
+) -> SubmissionResponse:
+    """Mark a reserved submission as failed if message delivery encountered an error."""
+    return await round_service.fail_submission(
+        society_id=society_id,
+        round_id=round_id,
+        submission_id=submission_id,
+        user_id=current_user.id,
+        user_role=membership.get("role", "resident"),
+        data=payload,
+    )
+
+
+@router.post(
     "/{round_id}/submissions",
     response_model=SubmissionResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Associate a resident grocery message with the round",
+    summary="Associate a resident grocery message with the round (Legacy/Direct)",
 )
 async def submit_grocery_order(
     society_id: str,
@@ -169,12 +250,23 @@ async def submit_grocery_order(
 @router.get(
     "/{round_id}/submissions",
     response_model=List[SubmissionResponse],
-    summary="List all grocery submissions for a round",
+    summary="List grocery submissions for a round respecting privacy",
 )
 async def list_round_submissions(
     society_id: str,
     round_id: str,
+    current_user: UserResponse = Depends(get_current_active_user),
     membership: Dict[str, Any] = Depends(require_society_member),
 ) -> List[SubmissionResponse]:
-    """Retrieve all submissions registered for a given round. Requires active membership."""
-    return await round_service.list_submissions(society_id, round_id)
+    """Retrieve submissions registered for a given round.
+
+    Privacy Enforcement:
+    - Residents see only their own submissions.
+    - Volunteers and Admins see all submissions in this society.
+    """
+    return await round_service.list_submissions(
+        society_id=society_id,
+        round_id=round_id,
+        caller_user_id=current_user.id,
+        caller_role=membership.get("role", "resident"),
+    )

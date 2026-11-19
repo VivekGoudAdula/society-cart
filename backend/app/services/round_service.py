@@ -15,10 +15,14 @@ from app.core.database import (
     get_societies_collection,
 )
 from app.schemas.round import (
+    AnnouncementDeliveryState,
     CreateRoundRequest,
     CreateSubmissionRequest,
     RoundResponse,
     RoundStatus,
+    SubmissionConfirmationRequest,
+    SubmissionFailureRequest,
+    SubmissionReservationRequest,
     SubmissionResponse,
 )
 from app.services.nexconn_service import send_system_bot_message
@@ -37,6 +41,40 @@ def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
 
 def _serialize_round(doc: Dict[str, Any], submissions_count: int = 0) -> RoundResponse:
     """Transform raw MongoDB round document into RoundResponse."""
+    open_ann = doc.get("opening_announcement")
+    if open_ann and isinstance(open_ann, dict):
+        opening_ann_model = AnnouncementDeliveryState(
+            status=open_ann.get("status", "pending"),
+            attempts=int(open_ann.get("attempts", 0)),
+            last_attempt_at=_ensure_utc(open_ann.get("last_attempt_at")),
+            sent_at=_ensure_utc(open_ann.get("sent_at")),
+            last_error=open_ann.get("last_error"),
+        )
+    else:
+        was_sent = bool(doc.get("opening_announcement_sent", False))
+        opening_ann_model = AnnouncementDeliveryState(
+            status="sent" if was_sent else "pending",
+            attempts=1 if was_sent else 0,
+            sent_at=_ensure_utc(doc.get("opened_at")) if was_sent else None,
+        )
+
+    close_ann = doc.get("closing_announcement")
+    if close_ann and isinstance(close_ann, dict):
+        closing_ann_model = AnnouncementDeliveryState(
+            status=close_ann.get("status", "pending"),
+            attempts=int(close_ann.get("attempts", 0)),
+            last_attempt_at=_ensure_utc(close_ann.get("last_attempt_at")),
+            sent_at=_ensure_utc(close_ann.get("sent_at")),
+            last_error=close_ann.get("last_error"),
+        )
+    else:
+        was_sent = bool(doc.get("closing_announcement_sent", False))
+        closing_ann_model = AnnouncementDeliveryState(
+            status="sent" if was_sent else "pending",
+            attempts=1 if was_sent else 0,
+            sent_at=_ensure_utc(doc.get("closed_at")) if was_sent else None,
+        )
+
     return RoundResponse(
         id=str(doc["_id"]),
         society_id=str(doc["society_id"]),
@@ -48,27 +86,35 @@ def _serialize_round(doc: Dict[str, Any], submissions_count: int = 0) -> RoundRe
         created_at=_ensure_utc(doc.get("created_at", datetime.now(timezone.utc))),
         opened_at=_ensure_utc(doc.get("opened_at")),
         deadline_at=_ensure_utc(doc["deadline_at"]),
-        shopping_date=doc["shopping_date"],
+        shopping_date=str(doc["shopping_date"]),
         closed_at=_ensure_utc(doc.get("closed_at")),
         updated_at=_ensure_utc(doc.get("updated_at", datetime.now(timezone.utc))),
         submissions_count=submissions_count,
+        opening_announcement=opening_ann_model,
+        closing_announcement=closing_ann_model,
+        opening_announcement_sent=bool(doc.get("opening_announcement_sent", opening_ann_model.status == "sent")),
+        closing_announcement_sent=bool(doc.get("closing_announcement_sent", closing_ann_model.status == "sent")),
     )
 
 
 def _serialize_submission(doc: Dict[str, Any]) -> SubmissionResponse:
     """Transform raw MongoDB submission document into SubmissionResponse."""
+    sub_id = doc.get("submission_id") or str(doc["_id"])
     return SubmissionResponse(
         id=str(doc["_id"]),
+        submission_id=sub_id,
         society_id=str(doc["society_id"]),
         round_id=str(doc["round_id"]),
         round_number=int(doc["round_number"]),
         user_id=str(doc["user_id"]),
         flat_number=doc["flat_number"],
         user_name=doc.get("user_name", "Resident"),
-        message_id=doc["message_id"],
+        message_id=doc.get("message_id"),
         raw_text=doc["raw_text"],
-        status=doc.get("status", "pending"),
-        created_at=doc.get("created_at", datetime.now(timezone.utc)),
+        status=doc.get("status", "reserved"),
+        reserved_at=_ensure_utc(doc.get("reserved_at")),
+        confirmed_at=_ensure_utc(doc.get("confirmed_at")),
+        created_at=_ensure_utc(doc.get("created_at", datetime.now(timezone.utc))),
     )
 
 
@@ -81,14 +127,36 @@ async def _get_society_nexconn_group_id(society_id: str) -> Optional[str]:
     return soc.get("nexconn_group_id") or f"society_{soc['_id']}"
 
 
-async def get_next_round_number(society_id: str) -> int:
-    """Determine the next sequential round number for a given society."""
+async def allocate_round_number(society_id: str) -> int:
+    """Atomically allocate the next sequential round number for a society.
+
+    Uses an atomic counter on the society document to prevent race conditions.
+    """
+    societies = get_societies_collection()
     rounds = get_order_rounds_collection()
-    cursor = rounds.find({"society_id": society_id}).sort("round_number", -1).limit(1)
-    results = await cursor.to_list(length=1)
-    if not results:
-        return 1
-    return int(results[0].get("round_number", 0)) + 1
+
+    soc = await societies.find_one({"_id": ObjectId(society_id)})
+    if not soc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Apartment society not found.",
+        )
+
+    # Initialize counter if not present
+    if "round_counter" not in soc:
+        last_round = await rounds.find_one({"society_id": society_id}, sort=[("round_number", -1)])
+        current_max = int(last_round["round_number"]) if last_round else 0
+        await societies.update_one(
+            {"_id": ObjectId(society_id), "round_counter": {"$exists": False}},
+            {"$set": {"round_counter": current_max}},
+        )
+
+    updated_soc = await societies.find_one_and_update(
+        {"_id": ObjectId(society_id)},
+        {"$inc": {"round_counter": 1}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return int(updated_soc["round_counter"])
 
 
 async def create_round(
@@ -124,7 +192,15 @@ async def create_round(
             detail="Order round deadline must be in the future.",
         )
 
-    round_number = await get_next_round_number(society_id)
+    round_number = await allocate_round_number(society_id)
+
+    initial_delivery_state = {
+        "status": "pending",
+        "attempts": 0,
+        "last_attempt_at": None,
+        "sent_at": None,
+        "last_error": None,
+    }
 
     doc = {
         "society_id": society_id,
@@ -139,14 +215,22 @@ async def create_round(
         "shopping_date": data.shopping_date,
         "closed_at": None,
         "updated_at": now,
+        "opening_announcement": initial_delivery_state.copy(),
+        "closing_announcement": initial_delivery_state.copy(),
         "opening_announcement_sent": False,
         "closing_announcement_sent": False,
     }
 
     rounds = get_order_rounds_collection()
-    result = await rounds.insert_one(doc)
-    doc["_id"] = result.inserted_id
+    try:
+        result = await rounds.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Round number {round_number} already exists for this society.",
+        )
 
+    doc["_id"] = result.inserted_id
     return _serialize_round(doc, submissions_count=0)
 
 
@@ -157,16 +241,7 @@ async def open_round(
 ) -> RoundResponse:
     """Transition a draft round to 'open' and broadcast the opening announcement.
 
-    Args:
-        society_id: Target society ID.
-        round_id: Target round ID.
-        user_id: Authorizing volunteer/admin user ID.
-
-    Returns:
-        RoundResponse: Updated open round.
-
-    Raises:
-        HTTPException: 404 Not Found, 400 Bad Request, or 409 Conflict.
+    Does not roll back round state if announcement delivery encounters an error.
     """
     rounds = get_order_rounds_collection()
     round_doc = await rounds.find_one({"_id": ObjectId(round_id), "society_id": society_id})
@@ -196,17 +271,23 @@ async def open_round(
         )
 
     # Check for another currently open round in this society
-    # Also trigger lazy expiry check on any existing open round
     existing_open = await rounds.find_one({"society_id": society_id, "status": "open"})
     if existing_open:
         if _ensure_utc(existing_open["deadline_at"]) <= now:
-            # Auto-close the expired round first
             await close_round(society_id, str(existing_open["_id"]), is_automatic=True)
         else:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Another grocery round (#{existing_open['round_number']}) is currently active. Close it before opening a new one.",
             )
+
+    pending_announcement = {
+        "status": "pending",
+        "attempts": 0,
+        "last_attempt_at": None,
+        "sent_at": None,
+        "last_error": None,
+    }
 
     try:
         updated = await rounds.find_one_and_update(
@@ -216,6 +297,7 @@ async def open_round(
                     "status": "open",
                     "opened_at": now,
                     "updated_at": now,
+                    "opening_announcement": pending_announcement,
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -251,9 +333,54 @@ async def open_round(
             "deadline_at": updated["deadline_at"].isoformat(),
             "shopping_date": updated["shopping_date"],
         }
-        sent = await send_system_bot_message(group_id, announcement_text, announcement_extra)
-        if sent:
-            await rounds.update_one({"_id": updated["_id"]}, {"$set": {"opening_announcement_sent": True}})
+
+        attempt_time = datetime.now(timezone.utc)
+        try:
+            sent = await send_system_bot_message(group_id, announcement_text, announcement_extra)
+            if sent:
+                updated = await rounds.find_one_and_update(
+                    {"_id": updated["_id"]},
+                    {
+                        "$set": {
+                            "opening_announcement.status": "sent",
+                            "opening_announcement.attempts": 1,
+                            "opening_announcement.last_attempt_at": attempt_time,
+                            "opening_announcement.sent_at": attempt_time,
+                            "opening_announcement.last_error": None,
+                            "opening_announcement_sent": True,
+                        }
+                    },
+                    return_document=ReturnDocument.AFTER,
+                )
+            else:
+                updated = await rounds.find_one_and_update(
+                    {"_id": updated["_id"]},
+                    {
+                        "$set": {
+                            "opening_announcement.status": "failed",
+                            "opening_announcement.attempts": 1,
+                            "opening_announcement.last_attempt_at": attempt_time,
+                            "opening_announcement.last_error": "Nexconn message dispatch was unsuccessful.",
+                            "opening_announcement_sent": False,
+                        }
+                    },
+                    return_document=ReturnDocument.AFTER,
+                )
+        except Exception as exc:
+            logger.warning("Opening announcement delivery exception: %s", exc)
+            updated = await rounds.find_one_and_update(
+                {"_id": updated["_id"]},
+                {
+                    "$set": {
+                        "opening_announcement.status": "failed",
+                        "opening_announcement.attempts": 1,
+                        "opening_announcement.last_attempt_at": attempt_time,
+                        "opening_announcement.last_error": str(exc),
+                        "opening_announcement_sent": False,
+                    }
+                },
+                return_document=ReturnDocument.AFTER,
+            )
 
     submissions_count = await get_grocery_submissions_collection().count_documents({"round_id": str(updated["_id"])})
     return _serialize_round(updated, submissions_count=submissions_count)
@@ -267,17 +394,7 @@ async def close_round(
 ) -> RoundResponse:
     """Transition an active round to 'closed' and broadcast the closing announcement.
 
-    Args:
-        society_id: Target society ID.
-        round_id: Target round ID.
-        user_id: Optional volunteer user ID.
-        is_automatic: True if invoked by the deadline scheduler.
-
-    Returns:
-        RoundResponse: Updated closed round.
-
-    Raises:
-        HTTPException: 404 Not Found, 400 Bad Request.
+    Does not roll back round state if announcement delivery encounters an error.
     """
     rounds = get_order_rounds_collection()
     round_doc = await rounds.find_one({"_id": ObjectId(round_id), "society_id": society_id})
@@ -300,6 +417,14 @@ async def close_round(
         )
 
     now = datetime.now(timezone.utc)
+    pending_closing_announcement = {
+        "status": "pending",
+        "attempts": 0,
+        "last_attempt_at": None,
+        "sent_at": None,
+        "last_error": None,
+    }
+
     updated = await rounds.find_one_and_update(
         {"_id": ObjectId(round_id), "status": {"$in": ["open", "draft"]}},
         {
@@ -307,6 +432,7 @@ async def close_round(
                 "status": "closed",
                 "closed_at": now,
                 "updated_at": now,
+                "closing_announcement": pending_closing_announcement,
             }
         },
         return_document=ReturnDocument.AFTER,
@@ -318,26 +444,70 @@ async def close_round(
             detail="Could not close round. It may have already been closed.",
         )
 
-    # Dispatch Closing Announcement if round was active and closing announcement not yet sent
-    if not updated.get("closing_announcement_sent", False):
-        group_id = await _get_society_nexconn_group_id(society_id)
-        if group_id:
-            announcement_text = (
-                f"🔒 Grocery Round #{updated['round_number']} is now CLOSED.\n\n"
-                f"New grocery submissions are no longer accepted for this round.\n\n"
-                f"The volunteer will now prepare the consolidated shopping list."
-            )
-            announcement_extra = {
-                "type": "round_event",
-                "action": "close",
-                "round_id": str(updated["_id"]),
-                "round_number": updated["round_number"],
-                "closed_at": now.isoformat(),
-                "is_automatic": is_automatic,
-            }
+    # Dispatch Closing Announcement
+    group_id = await _get_society_nexconn_group_id(society_id)
+    if group_id:
+        announcement_text = (
+            f"🔒 Grocery Round #{updated['round_number']} is now CLOSED.\n\n"
+            f"New grocery submissions are no longer accepted for this round.\n\n"
+            f"The volunteer will now prepare the consolidated shopping list."
+        )
+        announcement_extra = {
+            "type": "round_event",
+            "action": "close",
+            "round_id": str(updated["_id"]),
+            "round_number": updated["round_number"],
+            "closed_at": now.isoformat(),
+            "is_automatic": is_automatic,
+        }
+
+        attempt_time = datetime.now(timezone.utc)
+        try:
             sent = await send_system_bot_message(group_id, announcement_text, announcement_extra)
             if sent:
-                await rounds.update_one({"_id": updated["_id"]}, {"$set": {"closing_announcement_sent": True}})
+                updated = await rounds.find_one_and_update(
+                    {"_id": updated["_id"]},
+                    {
+                        "$set": {
+                            "closing_announcement.status": "sent",
+                            "closing_announcement.attempts": 1,
+                            "closing_announcement.last_attempt_at": attempt_time,
+                            "closing_announcement.sent_at": attempt_time,
+                            "closing_announcement.last_error": None,
+                            "closing_announcement_sent": True,
+                        }
+                    },
+                    return_document=ReturnDocument.AFTER,
+                )
+            else:
+                updated = await rounds.find_one_and_update(
+                    {"_id": updated["_id"]},
+                    {
+                        "$set": {
+                            "closing_announcement.status": "failed",
+                            "closing_announcement.attempts": 1,
+                            "closing_announcement.last_attempt_at": attempt_time,
+                            "closing_announcement.last_error": "Nexconn closing message dispatch was unsuccessful.",
+                            "closing_announcement_sent": False,
+                        }
+                    },
+                    return_document=ReturnDocument.AFTER,
+                )
+        except Exception as exc:
+            logger.warning("Closing announcement delivery exception: %s", exc)
+            updated = await rounds.find_one_and_update(
+                {"_id": updated["_id"]},
+                {
+                    "$set": {
+                        "closing_announcement.status": "failed",
+                        "closing_announcement.attempts": 1,
+                        "closing_announcement.last_attempt_at": attempt_time,
+                        "closing_announcement.last_error": str(exc),
+                        "closing_announcement_sent": False,
+                    }
+                },
+                return_document=ReturnDocument.AFTER,
+            )
 
     submissions_count = await get_grocery_submissions_collection().count_documents({"round_id": str(updated["_id"])})
     return _serialize_round(updated, submissions_count=submissions_count)
@@ -353,7 +523,6 @@ async def get_active_round(society_id: str) -> Optional[RoundResponse]:
     if not round_doc:
         return None
 
-    # Lazy deadline check
     now = datetime.now(timezone.utc)
     if _ensure_utc(round_doc["deadline_at"]) <= now:
         logger.info(
@@ -378,7 +547,6 @@ async def list_rounds(
     rounds = get_order_rounds_collection()
     submissions = get_grocery_submissions_collection()
 
-    # Trigger lazy check for any open round in this society
     now = datetime.now(timezone.utc)
     open_round_doc = await rounds.find_one({"society_id": society_id, "status": "open"})
     if open_round_doc and _ensure_utc(open_round_doc["deadline_at"]) <= now:
@@ -408,14 +576,216 @@ async def get_round_by_id(society_id: str, round_id: str) -> RoundResponse:
             detail="Grocery round not found for this society.",
         )
 
-    # Lazy check if open but expired
     now = datetime.now(timezone.utc)
     if round_doc.get("status") == "open" and _ensure_utc(round_doc["deadline_at"]) <= now:
-        round_doc = await close_round(society_id, str(round_doc["_id"]), is_automatic=True)
-        return round_doc
+        return await close_round(society_id, str(round_doc["_id"]), is_automatic=True)
 
     count = await get_grocery_submissions_collection().count_documents({"round_id": str(round_doc["_id"])})
     return _serialize_round(round_doc, submissions_count=count)
+
+
+async def reserve_submission(
+    society_id: str,
+    round_id: str,
+    user_id: str,
+    flat_number: str,
+    user_name: str,
+    data: SubmissionReservationRequest,
+) -> SubmissionResponse:
+    """Pre-register a resident grocery submission before dispatching to Nexconn chat.
+
+    Validates that the round is strictly open and before its deadline. Records the
+    acceptance timestamp `reserved_at` which authorizes timely submission even if
+    the round subsequently closes prior to confirmation.
+    """
+    rounds = get_order_rounds_collection()
+    round_doc = await rounds.find_one({"_id": ObjectId(round_id), "society_id": society_id})
+    if not round_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Grocery round not found for this society.",
+        )
+
+    now = datetime.now(timezone.utc)
+    if round_doc.get("status") == "open" and _ensure_utc(round_doc["deadline_at"]) <= now:
+        await close_round(society_id, str(round_doc["_id"]), is_automatic=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The deadline for this grocery round has passed. No new reservations can be accepted.",
+        )
+
+    if round_doc.get("status") != "open":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot reserve grocery submission. Round status is '{round_doc.get('status')}'.",
+        )
+
+    submissions = get_grocery_submissions_collection()
+
+    # Check for existing reservation with identical submission_id
+    existing = await submissions.find_one({"submission_id": data.submission_id})
+    if existing:
+        if str(existing.get("user_id")) == user_id and str(existing.get("round_id")) == round_id:
+            return _serialize_submission(existing)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A submission with this ID already exists for another user or round.",
+        )
+
+    doc = {
+        "submission_id": data.submission_id,
+        "society_id": society_id,
+        "round_id": str(round_doc["_id"]),
+        "round_number": int(round_doc["round_number"]),
+        "user_id": user_id,
+        "flat_number": flat_number,
+        "user_name": user_name,
+        "message_id": None,
+        "raw_text": data.raw_text,
+        "status": "reserved",
+        "reserved_at": now,
+        "confirmed_at": None,
+        "created_at": now,
+    }
+
+    try:
+        result = await submissions.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Submission reservation ID conflict. Please generate a unique submission ID.",
+        )
+
+    doc["_id"] = result.inserted_id
+    return _serialize_submission(doc)
+
+
+async def confirm_submission(
+    society_id: str,
+    round_id: str,
+    submission_id: str,
+    user_id: str,
+    user_role: str,
+    data: SubmissionConfirmationRequest,
+) -> SubmissionResponse:
+    """Confirm a reserved grocery submission by linking the delivered Nexconn message ID.
+
+    Authoritative timeliness rule: A reservation accepted before deadline remains
+    confirmable even if the round is now closed.
+    """
+    submissions = get_grocery_submissions_collection()
+    query = {"submission_id": submission_id, "society_id": society_id, "round_id": round_id}
+    sub_doc = await submissions.find_one(query)
+
+    if not sub_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reserved grocery submission not found.",
+        )
+
+    # Enforce ownership
+    if user_role not in ("volunteer", "admin") and str(sub_doc.get("user_id")) != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to confirm another resident's submission reservation.",
+        )
+
+    # Idempotent confirmation if already confirmed with identical message_id
+    if sub_doc.get("status") == "confirmed":
+        if sub_doc.get("message_id") == data.message_id:
+            return _serialize_submission(sub_doc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reservation has already been confirmed with a different message ID.",
+        )
+
+    if sub_doc.get("status") == "failed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot confirm a reservation that has been marked as failed.",
+        )
+
+    # Enforce single message_id constraint across submissions
+    existing_message = await submissions.find_one({
+        "message_id": data.message_id,
+        "submission_id": {"$ne": submission_id},
+    })
+    if existing_message:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This Nexconn message ID is already associated with another grocery submission.",
+        )
+
+    now = datetime.now(timezone.utc)
+    try:
+        updated = await submissions.find_one_and_update(
+            {"_id": sub_doc["_id"], "status": "reserved"},
+            {
+                "$set": {
+                    "message_id": data.message_id,
+                    "status": "confirmed",
+                    "confirmed_at": now,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate message ID detected. This Nexconn message is already linked.",
+        )
+
+    if not updated:
+        # Race condition fallback check
+        current = await submissions.find_one({"_id": sub_doc["_id"]})
+        if current and current.get("status") == "confirmed" and current.get("message_id") == data.message_id:
+            return _serialize_submission(current)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to confirm reservation. Current status may not be 'reserved'.",
+        )
+
+    return _serialize_submission(updated)
+
+
+async def fail_submission(
+    society_id: str,
+    round_id: str,
+    submission_id: str,
+    user_id: str,
+    user_role: str,
+    data: Optional[SubmissionFailureRequest] = None,
+) -> SubmissionResponse:
+    """Mark a submission reservation as failed when message dispatch fails."""
+    submissions = get_grocery_submissions_collection()
+    query = {"submission_id": submission_id, "society_id": society_id, "round_id": round_id}
+    sub_doc = await submissions.find_one(query)
+
+    if not sub_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Grocery submission reservation not found.",
+        )
+
+    if user_role not in ("volunteer", "admin") and str(sub_doc.get("user_id")) != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to update another resident's submission reservation.",
+        )
+
+    if sub_doc.get("status") == "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot mark an already confirmed submission as failed.",
+        )
+
+    reason = data.reason if data else "Nexconn message delivery failed"
+    updated = await submissions.find_one_and_update(
+        {"_id": sub_doc["_id"]},
+        {"$set": {"status": "failed", "fail_reason": reason}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return _serialize_submission(updated)
 
 
 async def create_submission(
@@ -425,63 +795,59 @@ async def create_submission(
     user_name: str,
     data: CreateSubmissionRequest,
 ) -> SubmissionResponse:
-    """Associate a resident's grocery message with the active grocery round.
+    """Direct submission endpoint preserving backward compatibility.
 
-    Validates that the target round is strictly open and within its submission deadline.
+    Chains race-safe reservation and confirmation steps atomically.
     """
-    rounds = get_order_rounds_collection()
+    round_id = data.round_id
+    if not round_id:
+        active = await get_active_round(society_id)
+        if not active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="There is currently no active grocery round accepting submissions.",
+            )
+        round_id = active.id
 
-    if data.round_id:
-        round_doc = await rounds.find_one({"_id": ObjectId(data.round_id), "society_id": society_id})
-    else:
-        round_doc = await rounds.find_one({"society_id": society_id, "status": "open"})
+    client_sub_id = f"sub_{data.message_id}_{int(datetime.now(timezone.utc).timestamp())}"
+    reserve_req = SubmissionReservationRequest(
+        submission_id=client_sub_id,
+        raw_text=data.raw_text,
+    )
 
-    if not round_doc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="There is currently no active grocery round accepting submissions.",
-        )
+    reservation = await reserve_submission(
+        society_id=society_id,
+        round_id=round_id,
+        user_id=user_id,
+        flat_number=flat_number,
+        user_name=user_name,
+        data=reserve_req,
+    )
 
-    # Check expiration
-    now = datetime.now(timezone.utc)
-    if round_doc["status"] == "open" and _ensure_utc(round_doc["deadline_at"]) <= now:
-        await close_round(society_id, str(round_doc["_id"]), is_automatic=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The deadline for this grocery round has passed. No new submissions can be accepted.",
-        )
-
-    if round_doc["status"] != "open":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot submit groceries to a round with status '{round_doc['status']}'. Ordering is closed.",
-        )
-
-    submissions = get_grocery_submissions_collection()
-    doc = {
-        "society_id": society_id,
-        "round_id": str(round_doc["_id"]),
-        "round_number": int(round_doc["round_number"]),
-        "user_id": user_id,
-        "flat_number": flat_number,
-        "user_name": user_name,
-        "message_id": data.message_id,
-        "raw_text": data.raw_text,
-        "status": "pending",
-        "created_at": now,
-    }
-
-    result = await submissions.insert_one(doc)
-    doc["_id"] = result.inserted_id
-
-    return _serialize_submission(doc)
+    confirm_req = SubmissionConfirmationRequest(message_id=data.message_id)
+    return await confirm_submission(
+        society_id=society_id,
+        round_id=round_id,
+        submission_id=reservation.submission_id,
+        user_id=user_id,
+        user_role="resident",
+        data=confirm_req,
+    )
 
 
 async def list_submissions(
     society_id: str,
     round_id: str,
+    caller_user_id: str,
+    caller_role: str,
 ) -> List[SubmissionResponse]:
-    """Retrieve all grocery submissions associated with a specific round."""
+    """Retrieve grocery submissions associated with a round respecting privacy boundaries.
+
+    Authorization Rules:
+    - Residents can only retrieve their own submissions.
+    - Volunteers and Admins can retrieve all submissions for their authorized society.
+    - Access to submissions in a different society is forbidden.
+    """
     rounds = get_order_rounds_collection()
     round_doc = await rounds.find_one({"_id": ObjectId(round_id), "society_id": society_id})
     if not round_doc:
@@ -491,6 +857,21 @@ async def list_submissions(
         )
 
     submissions = get_grocery_submissions_collection()
-    cursor = submissions.find({"round_id": round_id, "society_id": society_id}).sort("created_at", 1)
-    results = await cursor.to_list(length=500)
+
+    query: Dict[str, Any] = {
+        "round_id": round_id,
+        "society_id": society_id,
+        "status": {"$ne": "failed"},
+    }
+
+    # Privacy enforcement
+    if caller_role in ("volunteer", "admin"):
+        # Authorized coordinators see all resident orders in this society
+        pass
+    else:
+        # Residents only see their own orders
+        query["user_id"] = caller_user_id
+
+    cursor = submissions.find(query).sort("created_at", 1)
+    results = await cursor.to_list(length=1000)
     return [_serialize_submission(doc) for doc in results]

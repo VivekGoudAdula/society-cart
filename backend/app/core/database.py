@@ -132,13 +132,20 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             name="idx_order_rounds_society_open_unique",
         )
 
-        # 2. Sequential round numbering and society lookup
+        # 2. Strict unique index: prevent duplicate round numbers within a society under concurrency
+        await db.order_rounds.create_index(
+            [("society_id", ASCENDING), ("round_number", ASCENDING)],
+            unique=True,
+            name="idx_order_rounds_society_round_unique",
+        )
+
+        # 3. Sequential round numbering and society lookup
         await db.order_rounds.create_index(
             [("society_id", ASCENDING), ("round_number", -1)],
             name="idx_order_rounds_society_number",
         )
 
-        # 3. Fast expired round detection for automatic scheduler
+        # 4. Fast expired round detection for automatic scheduler
         await db.order_rounds.create_index(
             [("status", ASCENDING), ("deadline_at", ASCENDING)],
             name="idx_order_rounds_status_deadline",
@@ -151,16 +158,32 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             name="idx_submissions_society_round",
         )
 
-        # 2. Flat lookup within round
+        # 2. User submission lookup for privacy filtering
+        await db.grocery_submissions.create_index(
+            [("round_id", ASCENDING), ("user_id", ASCENDING)],
+            name="idx_submissions_round_user",
+        )
+
+        # 3. Flat lookup within round
         await db.grocery_submissions.create_index(
             [("round_id", ASCENDING), ("flat_number", ASCENDING)],
             name="idx_submissions_round_flat",
         )
 
-        # 3. Link by real Nexconn message ID
+        # 4. Client submission ID unique constraint for race-safe reservation
+        await db.grocery_submissions.create_index(
+            [("submission_id", ASCENDING)],
+            unique=True,
+            sparse=True,
+            name="idx_submissions_client_id_unique",
+        )
+
+        # 5. Link by real Nexconn message ID - partial unique index on non-null message_id
         await db.grocery_submissions.create_index(
             [("message_id", ASCENDING)],
-            name="idx_submissions_message_id",
+            unique=True,
+            partialFilterExpression={"message_id": {"$type": "string"}},
+            name="idx_submissions_message_id_unique",
         )
     except Exception as exc:
         logger.warning("Database index check: %s", exc)

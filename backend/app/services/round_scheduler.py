@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import Optional
+from bson import ObjectId
 from pymongo import ReturnDocument
 
 from app.core.database import get_database, get_societies_collection
@@ -15,8 +16,93 @@ logger = logging.getLogger(__name__)
 _scheduler_task: Optional[asyncio.Task] = None
 
 
+async def dispatch_closing_announcement(
+    round_id: ObjectId,
+    society_id: str,
+    round_number: int,
+    closed_at: datetime,
+    is_automatic: bool = True,
+    current_attempts: int = 0,
+) -> bool:
+    """Safely dispatch closing announcement and update structured delivery status."""
+    try:
+        db = get_database()
+        rounds_col = db.order_rounds
+        soc = await get_societies_collection().find_one({"_id": ObjectId(society_id)})
+        group_id = soc.get("nexconn_group_id") if soc else f"society_{society_id}"
+
+        announcement_text = (
+            f"🔒 Grocery Round #{round_number} is now CLOSED.\n\n"
+            f"New grocery submissions are no longer accepted for this round.\n\n"
+            f"The volunteer will now prepare the consolidated shopping list."
+        )
+        extra = {
+            "type": "round_event",
+            "action": "close",
+            "round_id": str(round_id),
+            "round_number": round_number,
+            "closed_at": closed_at.isoformat(),
+            "is_automatic": is_automatic,
+        }
+
+        attempt_time = datetime.now(timezone.utc)
+        attempts = current_attempts + 1
+
+        sent = await send_system_bot_message(group_id, announcement_text, extra)
+        if sent:
+            await rounds_col.update_one(
+                {"_id": round_id},
+                {
+                    "$set": {
+                        "closing_announcement.status": "sent",
+                        "closing_announcement.attempts": attempts,
+                        "closing_announcement.last_attempt_at": attempt_time,
+                        "closing_announcement.sent_at": attempt_time,
+                        "closing_announcement.last_error": None,
+                        "closing_announcement_sent": True,
+                    }
+                },
+            )
+            return True
+        else:
+            await rounds_col.update_one(
+                {"_id": round_id},
+                {
+                    "$set": {
+                        "closing_announcement.status": "failed",
+                        "closing_announcement.attempts": attempts,
+                        "closing_announcement.last_attempt_at": attempt_time,
+                        "closing_announcement.last_error": "Nexconn returned unsuccessful response",
+                        "closing_announcement_sent": False,
+                    }
+                },
+            )
+            return False
+    except Exception as exc:
+        logger.warning("Error dispatching closing announcement for round %s: %s", round_id, exc)
+        try:
+            db = get_database()
+            await db.order_rounds.update_one(
+                {"_id": round_id},
+                {
+                    "$set": {
+                        "closing_announcement.status": "failed",
+                        "closing_announcement.attempts": current_attempts + 1,
+                        "closing_announcement.last_attempt_at": datetime.now(timezone.utc),
+                        "closing_announcement.last_error": str(exc),
+                        "closing_announcement_sent": False,
+                    }
+                },
+            )
+        except Exception:
+            pass
+        return False
+
+
 async def check_expired_rounds_once() -> int:
     """Find and automatically close any open grocery rounds whose deadlines have expired.
+
+    Also retries pending closing announcements on previously closed rounds.
 
     Returns:
         int: Number of rounds transitioned to closed.
@@ -38,12 +124,20 @@ async def check_expired_rounds_once() -> int:
     expired_rounds = await cursor.to_list(length=100)
     closed_count = 0
 
+    pending_announcement = {
+        "status": "pending",
+        "attempts": 0,
+        "last_attempt_at": None,
+        "sent_at": None,
+        "last_error": None,
+    }
+
     for round_doc in expired_rounds:
         round_id = round_doc["_id"]
         society_id = round_doc["society_id"]
         round_number = round_doc.get("round_number", 1)
 
-        # Atomic update to prevent duplicate closures or races
+        # Atomic update strictly on status=open to prevent duplicate closures or worker races
         updated = await rounds_col.find_one_and_update(
             {"_id": round_id, "status": "open"},
             {
@@ -51,6 +145,7 @@ async def check_expired_rounds_once() -> int:
                     "status": "closed",
                     "closed_at": now,
                     "updated_at": now,
+                    "closing_announcement": pending_announcement,
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -65,32 +160,54 @@ async def check_expired_rounds_once() -> int:
                 round_doc.get("deadline_at"),
             )
 
-            # Publish Nexconn Closing Announcement if not sent yet
-            if not updated.get("closing_announcement_sent", False):
-                try:
-                    soc = await get_societies_collection().find_one({"_id": society_id})
-                    group_id = soc.get("nexconn_group_id") if soc else f"society_{society_id}"
-                    announcement_text = (
-                        f"🔒 Grocery Round #{round_number} is now CLOSED.\n\n"
-                        f"New grocery submissions are no longer accepted for this round.\n\n"
-                        f"The volunteer will now prepare the consolidated shopping list."
-                    )
-                    extra = {
-                        "type": "round_event",
-                        "action": "close",
-                        "round_id": str(round_id),
-                        "round_number": round_number,
-                        "closed_at": now.isoformat(),
-                        "is_automatic": True,
-                    }
-                    sent = await send_system_bot_message(group_id, announcement_text, extra)
-                    if sent:
-                        await rounds_col.update_one(
-                            {"_id": round_id},
-                            {"$set": {"closing_announcement_sent": True}},
-                        )
-                except Exception as ann_exc:
-                    logger.warning("Error publishing auto-close announcement: %s", ann_exc)
+            # Publish Nexconn Closing Announcement
+            await dispatch_closing_announcement(
+                round_id=round_id,
+                society_id=society_id,
+                round_number=round_number,
+                closed_at=now,
+                is_automatic=True,
+                current_attempts=0,
+            )
+
+    # Retry any pending or failed closing announcements (up to 3 attempts)
+    retry_cursor = rounds_col.find({
+        "status": "closed",
+        "closing_announcement.status": {"$in": ["pending", "failed"]},
+        "closing_announcement.attempts": {"$lt": 3},
+    })
+    retry_rounds = await retry_cursor.to_list(length=20)
+    for r_doc in retry_rounds:
+        r_id = r_doc["_id"]
+        soc_id = r_doc["society_id"]
+        r_num = r_doc.get("round_number", 1)
+        r_closed = r_doc.get("closed_at", now)
+        c_attempts = int(r_doc.get("closing_announcement", {}).get("attempts", 0))
+
+        # Atomic claim to prevent multi-worker duplicate retries
+        claimed = await rounds_col.find_one_and_update(
+            {
+                "_id": r_id,
+                "closing_announcement.status": {"$in": ["pending", "failed"]},
+                "closing_announcement.attempts": c_attempts,
+            },
+            {
+                "$set": {
+                    "closing_announcement.status": "pending",
+                    "closing_announcement.last_attempt_at": now,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if claimed:
+            await dispatch_closing_announcement(
+                round_id=r_id,
+                society_id=soc_id,
+                round_number=r_num,
+                closed_at=r_closed,
+                is_automatic=True,
+                current_attempts=c_attempts,
+            )
 
     return closed_count
 

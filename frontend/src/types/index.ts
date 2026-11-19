@@ -154,6 +154,14 @@ export interface ActivityNotification {
 
 export type ApiRoundStatus = 'draft' | 'open' | 'closed' | 'cancelled';
 
+export interface AnnouncementDeliveryState {
+  status: 'pending' | 'sent' | 'failed';
+  attempts: number;
+  last_attempt_at?: string;
+  sent_at?: string;
+  last_error?: string;
+}
+
 export interface ApiOrderRound {
   id: string;
   society_id: string;
@@ -169,6 +177,10 @@ export interface ApiOrderRound {
   closed_at?: string;
   updated_at: string;
   submissions_count: number;
+  opening_announcement?: AnnouncementDeliveryState;
+  closing_announcement?: AnnouncementDeliveryState;
+  opening_announcement_sent?: boolean;
+  closing_announcement_sent?: boolean;
 }
 
 export interface ApiRoundListResponse {
@@ -178,14 +190,17 @@ export interface ApiRoundListResponse {
 
 export interface ApiGrocerySubmission {
   id: string;
+  submission_id?: string;
   society_id: string;
   round_id: string;
   round_number: number;
   user_id: string;
   flat_number: string;
   user_name: string;
-  message_id: string;
+  message_id?: string;
   raw_text: string;
-  status: string;
+  status: 'reserved' | 'confirmed' | 'failed' | 'pending' | 'parsed' | string;
+  reserved_at?: string;
+  confirmed_at?: string;
   created_at: string;
 }

@@ -214,25 +214,68 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const confirmedMsg = await nexconnClient.sendMessage(activeGroupId, text.trim(), {
-        name: currentUser.name,
-        flatNumber: currentUser.flatNumber,
-        role: currentUser.role,
-      });
+      let clientSubmissionId: string | null = null;
+      const isGrocerySubmission = asGroceryOrder && !!currentActiveRound && !!activeSocietyPair?.society.id;
 
-      if (asGroceryOrder && currentActiveRound && activeSocietyPair?.society.id) {
+      // 1. Race-Safe Reservation Step: Pre-register order with backend before chat dispatch
+      if (isGrocerySubmission) {
+        clientSubmissionId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         try {
-          await api.rounds.submitOrder(activeSocietyPair.society.id, currentActiveRound.id, {
-            message_id: confirmedMsg.id,
-            raw_text: text.trim(),
-          });
-          confirmedMsg.isGroceryOrder = true;
-          refreshActiveRound();
-        } catch (subErr: any) {
-          console.warn('[ChatContext] Order submission association failed:', subErr);
+          await api.rounds.reserveSubmission(
+            activeSocietyPair!.society.id,
+            currentActiveRound!.id,
+            {
+              submission_id: clientSubmissionId,
+              raw_text: text.trim(),
+            }
+          );
+        } catch (reserveErr: any) {
+          console.warn('[ChatContext] Order reservation rejected by backend:', reserveErr);
           return {
             success: false,
-            error: subErr.message || 'Message sent to chat, but grocery round order registration failed.',
+            error: reserveErr.message || 'Grocery order reservation rejected. The round may be closed or expired.',
+          };
+        }
+      }
+
+      // 2. Dispatch message to Nexconn Group Chat
+      let confirmedMsg;
+      try {
+        confirmedMsg = await nexconnClient.sendMessage(activeGroupId, text.trim(), {
+          name: currentUser.name,
+          flatNumber: currentUser.flatNumber,
+          role: currentUser.role,
+        });
+      } catch (sendErr: any) {
+        // If message sending failed, mark reservation as failed to keep state consistent
+        if (isGrocerySubmission && clientSubmissionId) {
+          api.rounds
+            .failSubmission(activeSocietyPair!.society.id, currentActiveRound!.id, clientSubmissionId, {
+              reason: sendErr.message || 'Nexconn chat dispatch failed',
+            })
+            .catch((err) => console.warn('[ChatContext] Failed to record reservation failure:', err));
+        }
+        throw sendErr;
+      }
+
+      // 3. Confirm reservation with real Nexconn message ID
+      if (isGrocerySubmission && clientSubmissionId) {
+        try {
+          await api.rounds.confirmSubmission(
+            activeSocietyPair!.society.id,
+            currentActiveRound!.id,
+            clientSubmissionId,
+            {
+              message_id: confirmedMsg.id,
+            }
+          );
+          confirmedMsg.isGroceryOrder = true;
+          refreshActiveRound();
+        } catch (confirmErr: any) {
+          console.warn('[ChatContext] Order confirmation failed:', confirmErr);
+          return {
+            success: false,
+            error: confirmErr.message || 'Chat message sent, but failed to confirm grocery round reservation.',
           };
         }
       }

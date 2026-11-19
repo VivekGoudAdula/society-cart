@@ -203,6 +203,45 @@ export const api = {
         method: 'POST',
       }),
 
+    reserveSubmission: (
+      societyId: string,
+      roundId: string,
+      data: {
+        submission_id: string;
+        raw_text: string;
+      }
+    ) =>
+      request<ApiGrocerySubmission>(`/api/societies/${societyId}/rounds/${roundId}/submissions/reserve`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    confirmSubmission: (
+      societyId: string,
+      roundId: string,
+      submissionId: string,
+      data: {
+        message_id: string;
+      }
+    ) =>
+      request<ApiGrocerySubmission>(`/api/societies/${societyId}/rounds/${roundId}/submissions/${submissionId}/confirm`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    failSubmission: (
+      societyId: string,
+      roundId: string,
+      submissionId: string,
+      data?: {
+        reason?: string;
+      }
+    ) =>
+      request<ApiGrocerySubmission>(`/api/societies/${societyId}/rounds/${roundId}/submissions/${submissionId}/fail`, {
+        method: 'POST',
+        body: JSON.stringify(data || {}),
+      }),
+
     submitOrder: (
       societyId: string,
       roundId: string,
