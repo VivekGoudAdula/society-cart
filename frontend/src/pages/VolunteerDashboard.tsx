@@ -14,6 +14,9 @@ import {
   User,
   Shield,
   RefreshCw,
+  PlusCircle,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PageHeader } from '../components/common/PageHeader';
@@ -21,9 +24,11 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
+import { Modal } from '../components/common/Modal';
+import { Input } from '../components/common/Input';
 import { ConfirmationDialog } from '../components/common/ConfirmationDialog';
 import { api } from '../services/api';
-import { ApiMembership } from '../types';
+import { ApiMembership, ApiOrderRound } from '../types';
 
 /**
  * Screen 4: Volunteer Operations Dashboard — Logistics control center for closing rounds,
@@ -34,8 +39,13 @@ export const VolunteerDashboard: React.FC = () => {
   const {
     currentUser,
     society,
+    currentActiveRound,
     activeRound,
     pastRounds,
+    refreshActiveRound,
+    createRound,
+    openRound,
+    closeRound,
     closeActiveRound,
     groceryItems,
     activeSocietyPair,
@@ -43,15 +53,34 @@ export const VolunteerDashboard: React.FC = () => {
   } = useApp();
 
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // New Round Form State
+  const [newTitle, setNewTitle] = useState('Weekend Community Bulk Order');
+  const [newDescription, setNewDescription] = useState('Aggregating essentials for Sunday wholesale procurement');
+  const [newDeadline, setNewDeadline] = useState(
+    new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 16)
+  );
+  const [newShoppingDate, setNewShoppingDate] = useState('Saturday 10:00 AM');
+
   const [members, setMembers] = useState<ApiMembership[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [pastRoundsList, setPastRoundsList] = useState<ApiOrderRound[]>([]);
+  const [isLoadingRounds, setIsLoadingRounds] = useState(false);
+
   const purchasedCount = groceryItems.filter((i) => i.isPurchased).length;
   const progressPercent = Math.round((purchasedCount / groceryItems.length) * 100);
 
   const isAdmin = activeSocietyPair?.membership.role === 'admin';
+  const isVolunteerOrAdmin =
+    activeSocietyPair?.membership.role === 'admin' ||
+    activeSocietyPair?.membership.role === 'volunteer';
 
   /**
    * Fetches real registered members for the active society.
@@ -69,9 +98,26 @@ export const VolunteerDashboard: React.FC = () => {
     }
   };
 
+  /**
+   * Fetches round history for the active society.
+   */
+  const loadRoundsHistory = async () => {
+    if (!activeSocietyPair?.society.id) return;
+    setIsLoadingRounds(true);
+    try {
+      const res = await api.rounds.list(activeSocietyPair.society.id);
+      setPastRoundsList(res.items);
+    } catch {
+      // Fallback
+    } finally {
+      setIsLoadingRounds(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated && activeSocietyPair) {
       loadMembers();
+      loadRoundsHistory();
     }
   }, [isAuthenticated, activeSocietyPair]);
 
@@ -98,6 +144,67 @@ export const VolunteerDashboard: React.FC = () => {
       });
     } finally {
       setUpdatingMemberId(null);
+    }
+  };
+
+  /**
+   * Creates a new grocery ordering round and immediately opens it.
+   */
+  const handleCreateAndOpenRound = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newDeadline || isCreating) return;
+
+    setIsCreating(true);
+    setActionError(null);
+
+    const deadlineUtc = new Date(newDeadline).toISOString();
+
+    const createRes = await createRound({
+      title: newTitle.trim(),
+      description: newDescription.trim() || undefined,
+      deadline_at: deadlineUtc,
+      shopping_date: newShoppingDate.trim(),
+    });
+
+    if (!createRes.success || !createRes.round) {
+      setActionError(createRes.error || 'Failed to create grocery round.');
+      setIsCreating(false);
+      return;
+    }
+
+    // Now open the round immediately
+    const openRes = await openRound(createRes.round.id);
+    setIsCreating(false);
+
+    if (!openRes.success) {
+      setActionError(openRes.error || 'Round created as draft, but opening announcement failed.');
+    } else {
+      setShowCreateModal(false);
+      await refreshActiveRound();
+      await loadRoundsHistory();
+    }
+  };
+
+  /**
+   * Closes the active round.
+   */
+  const handleConfirmClose = async () => {
+    if (!currentActiveRound) {
+      closeActiveRound();
+      setShowCloseModal(false);
+      return;
+    }
+
+    setIsClosing(true);
+    setActionError(null);
+    const res = await closeRound(currentActiveRound.id);
+    setIsClosing(false);
+    setShowCloseModal(false);
+
+    if (!res.success) {
+      setActionError(res.error || 'Failed to close grocery round.');
+    } else {
+      await loadRoundsHistory();
     }
   };
 
@@ -308,8 +415,19 @@ export const VolunteerDashboard: React.FC = () => {
 
           {/* Action CTAs */}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
+            {isVolunteerOrAdmin && activeRound.status !== 'open' && (
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => setShowCreateModal(true)}
+                leftIcon={<PlusCircle className="h-4 w-4" />}
+              >
+                Start New Grocery Round
+              </Button>
+            )}
+
             <Button
-              variant="primary"
+              variant={activeRound.status === 'open' ? 'primary' : 'outline'}
               size="md"
               onClick={() => navigate('/shopping-list')}
               leftIcon={<ShoppingCart className="h-4 w-4" />}
@@ -335,6 +453,14 @@ export const VolunteerDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Action Error feedback if any */}
+        {actionError && (
+          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-800 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+            <span>{actionError}</span>
+          </div>
+        )}
+
         {/* Packing & Purchasing Progress Bar */}
         <div className="mt-6 pt-5 border-t border-[#E6ECE8]">
           <div className="flex items-center justify-between text-xs mb-1.5 font-semibold text-[#18231E]">
@@ -353,8 +479,23 @@ export const VolunteerDashboard: React.FC = () => {
       {/* Historical Rounds Archive */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-[#18231E]">Completed Grocery Drives</h3>
-          <span className="text-xs text-[#718078]">Past distribution records</span>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-[#18231E]">Completed Grocery Drives</h3>
+            <Badge variant="neutral" size="sm">
+              {pastRoundsList.length > 0 ? `${pastRoundsList.length} Rounds` : 'Archive'}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#718078]">Past distribution records</span>
+            <button
+              onClick={loadRoundsHistory}
+              disabled={isLoadingRounds}
+              title="Refresh Rounds History"
+              className="inline-flex items-center gap-1 text-xs text-[#718078] hover:text-[#23865B] transition-colors"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoadingRounds ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
         <Card className="p-0 overflow-hidden">
@@ -363,55 +504,166 @@ export const VolunteerDashboard: React.FC = () => {
               <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Round</th>
-                  <th className="py-3 px-4">Delivery Date</th>
-                  <th className="py-3 px-4">Flats</th>
-                  <th className="py-3 px-4">Total Items</th>
-                  <th className="py-3 px-4">Final Cost</th>
+                  <th className="py-3 px-4">Shopping Date</th>
+                  <th className="py-3 px-4">Deadline</th>
+                  <th className="py-3 px-4">Orders</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E6ECE8]">
-                {pastRounds.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-[#18231E]">
-                      Round #{r.roundNumber} — {r.title}
-                    </td>
-                    <td className="py-3.5 px-4 text-[#718078]">{r.shopVisitDate}</td>
-                    <td className="py-3.5 px-4 font-medium">{r.participatingFlatsCount} Flats</td>
-                    <td className="py-3.5 px-4 text-[#718078]">{r.totalItemsCount} items</td>
-                    <td className="py-3.5 px-4 font-bold text-[#18231E]">
-                      ₹{r.finalPurchasedValue?.toLocaleString('en-IN')}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <Badge variant="success" size="sm">
-                        Delivered
-                      </Badge>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => navigate('/order-summary')}
-                        className="font-semibold text-[#23865B] hover:underline"
-                      >
-                        View Bill & Savings
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {pastRoundsList.length > 0 ? (
+                  pastRoundsList.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-[#18231E]">
+                        Round #{r.round_number} — {r.title}
+                      </td>
+                      <td className="py-3.5 px-4 text-[#718078]">{r.shopping_date}</td>
+                      <td className="py-3.5 px-4 text-[#718078]">
+                        {new Date(r.deadline_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })},{' '}
+                        {new Date(r.deadline_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+                      </td>
+                      <td className="py-3.5 px-4 font-medium text-[#18231E]">
+                        {r.submissions_count} submissions
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Badge
+                          variant={r.status === 'open' ? 'success' : r.status === 'draft' ? 'warning' : 'neutral'}
+                          size="sm"
+                        >
+                          {r.status.toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={() => navigate('/shopping-list')}
+                          className="font-semibold text-[#23865B] hover:underline"
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  pastRounds.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-[#18231E]">
+                        Round #{r.roundNumber} — {r.title}
+                      </td>
+                      <td className="py-3.5 px-4 text-[#718078]">{r.shopVisitDate}</td>
+                      <td className="py-3.5 px-4 text-[#718078]">{r.deadlineText}</td>
+                      <td className="py-3.5 px-4 font-medium">{r.participatingFlatsCount} Flats</td>
+                      <td className="py-3.5 px-4">
+                        <Badge variant="success" size="sm">
+                          Delivered
+                        </Badge>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={() => navigate('/order-summary')}
+                          className="font-semibold text-[#23865B] hover:underline"
+                        >
+                          View Bill & Savings
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </Card>
       </div>
 
+      {/* Start New Round Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => !isCreating && setShowCreateModal(false)}
+        title="Start New Grocery Ordering Round"
+        description="Creates an ordering round and broadcasts the opening announcement to all residents on the Nexconn group chat."
+      >
+        <form onSubmit={handleCreateAndOpenRound} className="space-y-4 pt-2">
+          {actionError && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-800 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+              <span>{actionError}</span>
+            </div>
+          )}
+
+          <Input
+            label="Round Title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="e.g. Weekend Essentials Drive"
+            required
+          />
+
+          <Input
+            label="Description / Volunteer Note"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            placeholder="e.g. Procuring from wholesale mandi on Saturday morning"
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Order Submission Deadline"
+              type="datetime-local"
+              value={newDeadline}
+              onChange={(e) => setNewDeadline(e.target.value)}
+              required
+            />
+
+            <Input
+              label="Expected Shopping Date"
+              value={newShoppingDate}
+              onChange={(e) => setNewShoppingDate(e.target.value)}
+              placeholder="e.g. Saturday 10:00 AM"
+              required
+            />
+          </div>
+
+          <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span>Real-Time Group Chat Broadcast</span>
+            </div>
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              Upon starting, Society Cart Assistant will publish an official announcement with the deadline to the apartment Nexconn group channel.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              disabled={isCreating}
+              onClick={() => setShowCreateModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              isLoading={isCreating}
+              leftIcon={<PlusCircle className="h-4 w-4" />}
+            >
+              Start & Announce Round
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Close Round Confirmation Modal */}
       <ConfirmationDialog
         isOpen={showCloseModal}
-        onClose={() => setShowCloseModal(false)}
-        onConfirm={closeActiveRound}
-        title="Close Round #6 for New Orders?"
-        message="Closing the round will lock resident message submissions and compile the final packing manifest. You will proceed to the market for bulk purchasing."
-        confirmLabel="Yes, Close Round"
+        onClose={() => !isClosing && setShowCloseModal(false)}
+        onConfirm={handleConfirmClose}
+        title={`Close Round #${activeRound.roundNumber} for Submissions?`}
+        message="Closing the round will immediately lock resident grocery order submissions and broadcast a closing notice in the Nexconn group chat. You can then view the consolidated shopping list."
+        confirmLabel={isClosing ? 'Closing...' : 'Yes, Close Round'}
         cancelLabel="Keep Open"
       />
     </div>

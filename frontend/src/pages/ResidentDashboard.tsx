@@ -52,7 +52,13 @@ export const ResidentDashboard: React.FC = () => {
       />
 
       {/* Hero Active Order Round Card */}
-      <Card className="border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/30 p-6 shadow-sm">
+      <Card
+        className={`p-6 shadow-sm ${
+          activeRound.status === 'open'
+            ? 'border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/30'
+            : 'border-slate-200 bg-white'
+        }`}
+      >
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -60,15 +66,21 @@ export const ResidentDashboard: React.FC = () => {
                 variant={activeRound.status === 'open' ? 'success' : 'neutral'}
                 pulseDot={activeRound.status === 'open'}
               >
-                Round #{activeRound.roundNumber} {activeRound.status.toUpperCase()}
+                {activeRound.status === 'open'
+                  ? `Round #${activeRound.roundNumber} OPEN`
+                  : 'ORDERING CLOSED'}
               </Badge>
               <span className="text-xs text-[#718078] font-medium">• Collective Order Drive</span>
             </div>
 
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-[#18231E]">{activeRound.title}</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-[#18231E]">
+                {activeRound.status === 'open' ? activeRound.title : 'No Active Grocery Round'}
+              </h2>
               <p className="mt-1 text-xs sm:text-sm text-[#718078]">
-                Post your grocery requirements in the group chat before the deadline. Our volunteer will purchase in bulk tomorrow.
+                {activeRound.status === 'open'
+                  ? 'Post your grocery requirements in the group chat before the deadline. Our volunteer will purchase in bulk.'
+                  : 'Grocery ordering is currently closed for this society. Society volunteers will announce the next procurement round.'}
               </p>
             </div>
 
@@ -77,7 +89,10 @@ export const ResidentDashboard: React.FC = () => {
               <div className="flex items-center gap-2 text-xs text-[#18231E]">
                 <Clock className="h-4 w-4 text-amber-600 shrink-0" />
                 <span>
-                  Closes: <strong className="text-amber-800">{activeRound.deadlineText}</strong>
+                  Status:{' '}
+                  <strong className={activeRound.status === 'open' ? 'text-amber-800' : 'text-slate-600'}>
+                    {activeRound.deadlineText}
+                  </strong>
                 </span>
               </div>
 
@@ -91,7 +106,7 @@ export const ResidentDashboard: React.FC = () => {
               <div className="flex items-center gap-2 text-xs text-[#18231E]">
                 <User className="h-4 w-4 text-slate-500 shrink-0" />
                 <span>
-                  Volunteer: <strong>{activeRound.volunteerName} ({activeRound.volunteerFlat})</strong>
+                  Volunteer: <strong>{activeRound.volunteerName}</strong>
                 </span>
               </div>
             </div>
@@ -99,14 +114,25 @@ export const ResidentDashboard: React.FC = () => {
 
           {/* Action CTAs */}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
-            <Button
-              variant="primary"
-              size="md"
-              onClick={() => navigate('/chat')}
-              leftIcon={<MessageSquare className="h-4 w-4" />}
-            >
-              Add Grocery Items in Chat
-            </Button>
+            {activeRound.status === 'open' ? (
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => navigate('/chat')}
+                leftIcon={<MessageSquare className="h-4 w-4" />}
+              >
+                Add Grocery Items in Chat
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => navigate('/chat')}
+                leftIcon={<MessageSquare className="h-4 w-4" />}
+              >
+                Open Society Chat
+              </Button>
+            )}
             <Button
               variant="outline"
               size="md"

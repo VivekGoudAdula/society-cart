@@ -32,6 +32,8 @@ async def setup_test_db():
             await db.users.drop()
             await db.societies.drop()
             await db.memberships.drop()
+            await db.order_rounds.drop()
+            await db.grocery_submissions.drop()
         except Exception:
             pass
     yield db
@@ -40,6 +42,8 @@ async def setup_test_db():
             await db.users.drop()
             await db.societies.drop()
             await db.memberships.drop()
+            await db.order_rounds.drop()
+            await db.grocery_submissions.drop()
         except Exception:
             pass
     await close_mongo_connection()

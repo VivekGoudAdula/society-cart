@@ -151,3 +151,41 @@ export interface ActivityNotification {
   type: 'round_opened' | 'order_confirmed' | 'volunteer_update' | 'bill_generated';
   read: boolean;
 }
+
+export type ApiRoundStatus = 'draft' | 'open' | 'closed' | 'cancelled';
+
+export interface ApiOrderRound {
+  id: string;
+  society_id: string;
+  round_number: number;
+  title: string;
+  description?: string;
+  status: ApiRoundStatus;
+  created_by: string;
+  created_at: string;
+  opened_at?: string;
+  deadline_at: string;
+  shopping_date: string;
+  closed_at?: string;
+  updated_at: string;
+  submissions_count: number;
+}
+
+export interface ApiRoundListResponse {
+  items: ApiOrderRound[];
+  total: number;
+}
+
+export interface ApiGrocerySubmission {
+  id: string;
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  user_id: string;
+  flat_number: string;
+  user_name: string;
+  message_id: string;
+  raw_text: string;
+  status: string;
+  created_at: string;
+}

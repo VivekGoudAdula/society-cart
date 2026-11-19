@@ -2,6 +2,12 @@
  * API client service connecting Society Cart frontend to FastAPI backend.
  */
 
+import {
+  ApiOrderRound,
+  ApiRoundListResponse,
+  ApiGrocerySubmission,
+} from '../types';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 class ApiError extends Error {
@@ -161,5 +167,56 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ society_id: societyId, text, extra }),
       }),
+  },
+
+  rounds: {
+    getActive: (societyId: string) =>
+      request<ApiOrderRound | null>(`/api/societies/${societyId}/rounds/active`),
+
+    list: (societyId: string, skip = 0, limit = 20) =>
+      request<ApiRoundListResponse>(`/api/societies/${societyId}/rounds?skip=${skip}&limit=${limit}`),
+
+    getById: (societyId: string, roundId: string) =>
+      request<ApiOrderRound>(`/api/societies/${societyId}/rounds/${roundId}`),
+
+    create: (
+      societyId: string,
+      data: {
+        title: string;
+        description?: string;
+        deadline_at: string;
+        shopping_date: string;
+      }
+    ) =>
+      request<ApiOrderRound>(`/api/societies/${societyId}/rounds`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    open: (societyId: string, roundId: string) =>
+      request<ApiOrderRound>(`/api/societies/${societyId}/rounds/${roundId}/open`, {
+        method: 'POST',
+      }),
+
+    close: (societyId: string, roundId: string) =>
+      request<ApiOrderRound>(`/api/societies/${societyId}/rounds/${roundId}/close`, {
+        method: 'POST',
+      }),
+
+    submitOrder: (
+      societyId: string,
+      roundId: string,
+      data: {
+        message_id: string;
+        raw_text: string;
+      }
+    ) =>
+      request<ApiGrocerySubmission>(`/api/societies/${societyId}/rounds/${roundId}/submissions`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getSubmissions: (societyId: string, roundId: string) =>
+      request<ApiGrocerySubmission[]>(`/api/societies/${societyId}/rounds/${roundId}/submissions`),
   },
 };

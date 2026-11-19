@@ -122,6 +122,46 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             [("user_id", ASCENDING)],
             name="idx_memberships_user_id",
         )
+
+        # Order Rounds Collection:
+        # 1. Partial unique index: strictly prevent multiple simultaneous OPEN rounds per society
+        await db.order_rounds.create_index(
+            [("society_id", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"status": "open"},
+            name="idx_order_rounds_society_open_unique",
+        )
+
+        # 2. Sequential round numbering and society lookup
+        await db.order_rounds.create_index(
+            [("society_id", ASCENDING), ("round_number", -1)],
+            name="idx_order_rounds_society_number",
+        )
+
+        # 3. Fast expired round detection for automatic scheduler
+        await db.order_rounds.create_index(
+            [("status", ASCENDING), ("deadline_at", ASCENDING)],
+            name="idx_order_rounds_status_deadline",
+        )
+
+        # Grocery Submissions Collection:
+        # 1. Scope submissions by society and round
+        await db.grocery_submissions.create_index(
+            [("society_id", ASCENDING), ("round_id", ASCENDING)],
+            name="idx_submissions_society_round",
+        )
+
+        # 2. Flat lookup within round
+        await db.grocery_submissions.create_index(
+            [("round_id", ASCENDING), ("flat_number", ASCENDING)],
+            name="idx_submissions_round_flat",
+        )
+
+        # 3. Link by real Nexconn message ID
+        await db.grocery_submissions.create_index(
+            [("message_id", ASCENDING)],
+            name="idx_submissions_message_id",
+        )
     except Exception as exc:
         logger.warning("Database index check: %s", exc)
 
@@ -166,3 +206,13 @@ def get_societies_collection() -> AsyncCollection:
 def get_memberships_collection() -> AsyncCollection:
     """Return the memberships collection."""
     return get_database().memberships
+
+
+def get_order_rounds_collection() -> AsyncCollection:
+    """Return the order_rounds collection."""
+    return get_database().order_rounds
+
+
+def get_grocery_submissions_collection() -> AsyncCollection:
+    """Return the grocery_submissions collection."""
+    return get_database().grocery_submissions

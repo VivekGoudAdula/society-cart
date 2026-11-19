@@ -354,11 +354,68 @@ All test scenarios pass with 100% compliance:
 
 ---
 
-## 14. Current Development Status
+## 14. Phase 4 Grocery Order Rounds
+
+Phase 4 introduces the complete procurement round lifecycle, linking community messaging with structured ordering rounds, strict deadline enforcement, and volunteer logistics:
+
+### MongoDB Collections & Indexes
+
+- **`order_rounds`**:
+  - `society_id`: Foreign key referencing `societies._id`.
+  - `round_number`: Sequential round number within each apartment society (1, 2, 3...).
+  - `status`: `"draft"` | `"open"` | `"closed"` | `"cancelled"`.
+  - `deadline_at`: Order cutoff timestamp in UTC.
+  - `shopping_date`: Expected procurement date string.
+  - `opening_announcement_sent` & `closing_announcement_sent`: State tracking flags to prevent duplicate announcements.
+  - **Partial Unique Index (`idx_order_rounds_society_open_unique`)**: `{society_id: 1}` with filter `{"status": "open"}` — strictly prevents more than one open round per society at the database layer.
+  - **Query Indexes**: `{society_id: 1, round_number: -1}` and `{status: 1, deadline_at: 1}`.
+- **`grocery_submissions`**:
+  - `round_id`: Foreign key referencing active `order_rounds._id`.
+  - `user_id` & `flat_number`: Submitting resident's account ID and flat number.
+  - `message_id`: Real Nexconn message ID returned by SDK upon delivery.
+  - `raw_text`: Natural language grocery request.
+  - `status`: `"pending"` (ready for Phase 5 AI parsing).
+  - **Query Indexes**: `(society_id, round_id)`, `(round_id, flat_number)`, and `message_id`.
+
+### API Endpoints
+
+- **`POST /api/societies/{id}/rounds`**: Create draft round (requires `volunteer` or `admin`). Validates future deadline.
+- **`POST /api/societies/{id}/rounds/{round_id}/open`**: Opens round and broadcasts real Nexconn opening announcement. Rejects if another round is already open (409 Conflict).
+- **`POST /api/societies/{id}/rounds/{round_id}/close`**: Closes active round and broadcasts real Nexconn closing notice.
+- **`GET /api/societies/{id}/rounds/active`**: Fetches current open round (or null). Automatically executes lazy deadline expiration check.
+- **`GET /api/societies/{id}/rounds`**: Lists past and present rounds in descending order.
+- **`POST /api/societies/{id}/rounds/{round_id}/submissions`**: Associates a resident's Nexconn message with the round. Strictly rejected with HTTP 400 if round is closed, draft, or expired.
+- **`GET /api/societies/{id}/rounds/{round_id}/submissions`**: Lists all registered submissions for a given round.
+
+### Automatic Deadline Enforcement
+
+- **Dual-Mechanism Architecture**:
+  1. **Background Polling Loop**: A lightweight asyncio task running every 10 seconds detects rounds with `status == "open"` and `deadline_at <= now()`. It atomically closes them and sends the Nexconn closing notification.
+  2. **On-Demand Lazy Evaluation**: Any request to `GET /active`, `POST /open`, or `POST /submissions` verifies deadline status and auto-closes expired rounds immediately.
+
+### Verification & Test Suite
+
+Run the Phase 4 automated test suite:
+```bash
+pytest backend/tests/test_phase4.py -v
+```
+All 16 required test scenarios across 7 test groups passed with 100% compliance:
+- Scenario 1–3: Admin & Volunteer round creation allowed, Resident rejected (403).
+- Scenario 4–6: Admin & Volunteer round opening allowed, Resident rejected (403).
+- Scenario 7–8: Single active round constraint per society enforced (409 Conflict); separate societies can have simultaneous active rounds.
+- Scenario 9–10: Voluntary closure works; reopening closed rounds is blocked (400).
+- Scenario 11–12: Expired rounds auto-close; duplicate closure notices prevented.
+- Scenario 13: Cross-society access rejected (403 Forbidden).
+- Scenario 14–16: Closed rounds reject grocery submissions (400); active round API returns null when closed; round history scoped to society in descending order.
+
+---
+
+## 15. Current Development Status
 
 - **Completed Phases**:
   - Phase 0: Workspace Preparation & Architecture
   - Phase 1: UI Foundation & Application Layout (7 Screens & Design System)
   - Phase 2: Backend, Database & User Management (FastAPI, MongoDB Atlas, JWT, RBAC)
   - Phase 3: Real Nexconn Chat Integration (Live Engine/Chat SDKs, Token Minting, Group Channels, 100% E2E Verified)
-- **Next Phase**: Phase 4 — Grocery Order Rounds
+  - Phase 4: Grocery Order Rounds (Lifecycle, Deadline Scheduler, Submissions Linking, 100% E2E Verified)
+- **Next Phase**: Phase 5 — AI Grocery Understanding

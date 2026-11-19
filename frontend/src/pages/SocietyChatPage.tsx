@@ -9,6 +9,8 @@ import {
   WifiOff,
   Loader2,
   AlertCircle,
+  ShoppingCart,
+  Lock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
@@ -25,6 +27,7 @@ export const SocietyChatPage: React.FC = () => {
 
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [asGroceryOrder, setAsGroceryOrder] = useState(true);
   const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +39,8 @@ export const SocietyChatPage: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
+  const isRoundOpen = activeRound.status === 'open';
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || isSending) return;
@@ -45,12 +50,12 @@ export const SocietyChatPage: React.FC = () => {
     const sentText = inputMessage;
     setInputMessage('');
 
-    const success = await sendMessage(sentText);
+    const res = await sendMessage(sentText, asGroceryOrder && isRoundOpen);
     setIsSending(false);
 
-    if (!success) {
+    if (!res.success) {
       setInputMessage(sentText);
-      setSendError('Failed to deliver message to Nexconn channel. Please try again.');
+      setSendError(res.error || 'Failed to deliver message to Nexconn channel. Please try again.');
     }
   };
 
@@ -117,30 +122,32 @@ export const SocietyChatPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner: Active Connection Info */}
-      <div className="bg-[#EAF5EE]/70 px-4 py-2 border-b border-[#23865B]/15 flex items-center justify-between text-xs text-[#196B48]">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0 text-[#23865B]" />
-          <span>
-            {isAuthenticated ? (
-              <>
-                <strong>Nexconn Group Channel:</strong> Private apartment chat powered by{' '}
-                <code className="text-[11px] bg-white px-1.5 py-0.5 rounded font-mono border border-emerald-200">
-                  @nexconn/chat v26.5.1
-                </code>
-                . Messages sync across all connected flats.
-              </>
-            ) : (
-              <>
-                <strong>Demo Preview Mode:</strong> Sign in with your apartment credentials to connect to your live Nexconn group chat.
-              </>
-            )}
-          </span>
+      {/* 2. Banner: Active Round Status Banner */}
+      {isRoundOpen ? (
+        <div className="bg-emerald-50 px-4 py-2.5 border-b border-emerald-200/80 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-900">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-bold">🛒 Round #{activeRound.roundNumber}:</span>
+            <span>{activeRound.title}</span>
+            <span className="hidden sm:inline text-emerald-700">•</span>
+            <span className="hidden sm:inline text-emerald-700 font-medium">Shopping: {activeRound.shopVisitDate}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-emerald-800 font-semibold bg-white/80 px-2.5 py-1 rounded-lg border border-emerald-200">
+            <Clock className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Closes {activeRound.deadlineText}</span>
+          </div>
         </div>
-        <span className="text-[10px] bg-[#23865B] text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-wider hidden md:inline-block">
-          {isAuthenticated ? 'REAL-TIME ACTIVE' : 'PROTOTYPE PREVIEW'}
-        </span>
-      </div>
+      ) : (
+        <div className="bg-slate-100/90 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs text-slate-700">
+          <div className="flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 text-slate-500" />
+            <span className="font-medium">
+              Grocery ordering is currently closed. Community discussion is enabled.
+            </span>
+          </div>
+          <span className="text-[11px] font-semibold text-slate-500">Wait for next round</span>
+        </div>
+      )}
 
       {/* 3. Error Banner (if any) */}
       {(chatError || sendError) && (
@@ -269,6 +276,13 @@ export const SocietyChatPage: React.FC = () => {
                 >
                   <span className="font-bold">{isCurrentUser ? 'You' : msg.senderName}</span>
                   {msg.senderFlat && <span>• Flat {msg.senderFlat}</span>}
+                  {msg.isGroceryOrder && (
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      isCurrentUser ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      🛒 Order
+                    </span>
+                  )}
                   <span>• {msg.timestamp}</span>
                 </div>
                 <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
@@ -294,25 +308,74 @@ export const SocietyChatPage: React.FC = () => {
         ))}
       </div>
 
-      {/* 6. Message Input Bar */}
+      {/* 6. Message Input Bar with Order Mode Switcher */}
       <form onSubmit={handleSend} className="p-3 sm:p-4 bg-white border-t border-[#E6ECE8]">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            disabled={isSending}
-            placeholder={`Message ${society.name} (e.g. 5 kg rice, 1 litre oil, Flat ${currentUser.flatNumber})...`}
-            className="flex-1 rounded-xl border border-[#E6ECE8] bg-[#F8FAF9] px-4 py-3 text-sm text-[#18231E] placeholder:text-slate-400 focus:bg-white focus:border-[#23865B] focus:outline-none focus:ring-2 focus:ring-[#23865B]/20 transition-all"
-          />
-          <button
-            type="submit"
-            disabled={!inputMessage.trim() || isSending}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#23865B] text-white hover:bg-[#196B48] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-[#23865B]/20"
-            aria-label="Send message"
-          >
-            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
+        <div className="flex flex-col gap-2">
+          {/* Submission Mode Selector */}
+          <div className="flex items-center justify-between text-xs px-1">
+            <div className="flex items-center gap-2">
+              {isRoundOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setAsGroceryOrder(!asGroceryOrder)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    asGroceryOrder
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  <ShoppingCart className="h-3.5 w-3.5" />
+                  <span>{asGroceryOrder ? '🛒 Grocery Order Mode (Active)' : '💬 Regular Chat Mode'}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>Submissions closed for Round #{activeRound.roundNumber}</span>
+                </div>
+              )}
+            </div>
+            {isRoundOpen && asGroceryOrder && (
+              <span className="text-[11px] text-emerald-700 font-medium">
+                Links to Round #{activeRound.roundNumber} shopping list
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              disabled={isSending}
+              placeholder={
+                isRoundOpen && asGroceryOrder
+                  ? `Submit grocery items for Flat ${currentUser.flatNumber} (e.g. 5 kg rice, 2L oil)...`
+                  : `Message ${society.name} group chat...`
+              }
+              className="flex-1 rounded-xl border border-[#E6ECE8] bg-[#F8FAF9] px-4 py-3 text-sm text-[#18231E] placeholder:text-slate-400 focus:bg-white focus:border-[#23865B] focus:outline-none focus:ring-2 focus:ring-[#23865B]/20 transition-all"
+            />
+            <button
+              type="submit"
+              disabled={!inputMessage.trim() || isSending}
+              className={`flex h-11 px-4 shrink-0 items-center justify-center gap-2 rounded-xl text-white font-medium text-xs sm:text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm ${
+                isRoundOpen && asGroceryOrder
+                  ? 'bg-[#23865B] hover:bg-[#196B48] shadow-[#23865B]/20'
+                  : 'bg-slate-700 hover:bg-slate-800'
+              }`}
+              aria-label="Send message"
+            >
+              {isSending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {isRoundOpen && asGroceryOrder ? 'Order' : 'Send'}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>

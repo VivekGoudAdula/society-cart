@@ -56,3 +56,35 @@ async def require_society_admin(
             detail="Society administrator privileges are required for this action.",
         )
     return membership
+
+
+async def require_society_volunteer_or_admin(
+    society_id: str = Path(..., description="Target apartment society ID"),
+    current_user: UserResponse = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Verify that the current authenticated user is an active volunteer or administrator.
+
+    Args:
+        society_id: Target society ID from URL path.
+        current_user: Resolved authenticated user.
+
+    Returns:
+        Dict[str, Any]: Volunteer or Admin membership document.
+
+    Raises:
+        HTTPException: 403 Forbidden if user is an ordinary resident without volunteer privileges.
+    """
+    membership = await get_active_membership(current_user.id, society_id)
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not an active member of this apartment society.",
+        )
+
+    role = membership.get("role")
+    if role not in ("admin", "volunteer"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Volunteer or administrator privileges are required to manage grocery rounds.",
+        )
+    return membership

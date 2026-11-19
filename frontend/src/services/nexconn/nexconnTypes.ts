@@ -21,6 +21,7 @@ export interface NexconnChatMessage {
   text: string;
   isSelf: boolean;
   isSystemBot?: boolean;
+  isGroceryOrder?: boolean;
   structuredItems?: Array<{
     name: string;
     quantity: string;

@@ -11,7 +11,7 @@ interface ChatContextType {
   isLoadingHistory: boolean;
   activeGroupId: string | null;
   error: string | null;
-  sendMessage: (text: string) => Promise<boolean>;
+  sendMessage: (text: string, asGroceryOrder?: boolean) => Promise<{ success: boolean; error?: string }>;
   refreshHistory: () => Promise<void>;
 }
 
@@ -22,7 +22,14 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
  * incoming message event dispatch, and message history synchronization.
  */
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, activeSocietyPair, isAuthenticated, currentUser } = useApp();
+  const {
+    user,
+    activeSocietyPair,
+    isAuthenticated,
+    currentUser,
+    currentActiveRound,
+    refreshActiveRound,
+  } = useApp();
 
   const [connectionState, setConnectionState] = useState<NexconnConnectionState>('disconnected');
   const [messages, setMessages] = useState<NexconnChatMessage[]>([]);
@@ -121,6 +128,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         unsubscribeMsg = nexconnClient.onMessage((newMsg) => {
+          // If message is a system bot announcement or round update, trigger active round refresh
+          if (newMsg.isSystemBot || newMsg.text.includes('Grocery Round') || newMsg.text.includes('ROUND')) {
+            refreshActiveRound();
+          }
+
           setMessages((prev) => {
             // Avoid duplicate message insertions
             if (prev.some((m) => m.id === newMsg.id)) {
@@ -164,10 +176,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isAuthenticated, activeSocietyPair?.society.id, user?.id]);
 
   /**
-   * Sends a confirmed text message to the society's group chat.
+   * Sends a confirmed text message to the society's group chat, optionally associating
+   * it as an active grocery order submission.
    */
-  const sendMessage = async (text: string): Promise<boolean> => {
-    if (!text.trim()) return false;
+  const sendMessage = async (
+    text: string,
+    asGroceryOrder: boolean = false
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!text.trim()) return { success: false, error: 'Message cannot be empty.' };
+
+    if (asGroceryOrder) {
+      if (!currentActiveRound || currentActiveRound.status !== 'open') {
+        return {
+          success: false,
+          error: 'Grocery submissions are currently closed. No active round is accepting orders.',
+        };
+      }
+    }
 
     if (!isAuthenticated || !activeGroupId) {
       // In simulated demo mode, append message locally
@@ -182,9 +207,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         text: text.trim(),
         isSelf: true,
         isSystemBot: false,
+        isGroceryOrder: asGroceryOrder,
       };
       setMessages((prev) => [...prev, simulated]);
-      return true;
+      return { success: true };
     }
 
     try {
@@ -194,17 +220,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: currentUser.role,
       });
 
+      if (asGroceryOrder && currentActiveRound && activeSocietyPair?.society.id) {
+        try {
+          await api.rounds.submitOrder(activeSocietyPair.society.id, currentActiveRound.id, {
+            message_id: confirmedMsg.id,
+            raw_text: text.trim(),
+          });
+          confirmedMsg.isGroceryOrder = true;
+          refreshActiveRound();
+        } catch (subErr: any) {
+          console.warn('[ChatContext] Order submission association failed:', subErr);
+          return {
+            success: false,
+            error: subErr.message || 'Message sent to chat, but grocery round order registration failed.',
+          };
+        }
+      }
+
       setMessages((prev) => {
         if (prev.some((m) => m.id === confirmedMsg.id)) {
           return prev;
         }
         return [...prev, confirmedMsg];
       });
-      return true;
+      return { success: true };
     } catch (err: any) {
       console.error('[ChatContext] Send message failed:', err);
       setError(err.message || 'Failed to send message.');
-      return false;
+      return { success: false, error: err.message || 'Failed to send message.' };
     }
   };
 

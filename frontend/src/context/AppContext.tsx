@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import {
   UserProfile,
   UserRole,
@@ -11,6 +11,7 @@ import {
   UserSocietyPair,
   ApiSociety,
   ApiMembership,
+  ApiOrderRound,
 } from '../types';
 import {
   mockSociety,
@@ -60,6 +61,17 @@ interface AppContextType {
   society: Society;
 
   // Grocery rounds & chat
+  currentActiveRound: ApiOrderRound | null;
+  isLoadingActiveRound: boolean;
+  refreshActiveRound: () => Promise<void>;
+  createRound: (data: {
+    title: string;
+    description?: string;
+    deadline_at: string;
+    shopping_date: string;
+  }) => Promise<{ success: boolean; round?: ApiOrderRound; error?: string }>;
+  openRound: (roundId: string) => Promise<{ success: boolean; round?: ApiOrderRound; error?: string }>;
+  closeRound: (roundId: string) => Promise<{ success: boolean; round?: ApiOrderRound; error?: string }>;
   activeRound: OrderRound;
   pastRounds: OrderRound[];
   closeActiveRound: () => void;
@@ -88,12 +100,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Application view/role state
   const [currentRole, setCurrentRole] = useState<UserRole>('resident');
-  const [activeRound, setActiveRound] = useState<OrderRound>(mockActiveRound);
+  const [currentActiveRound, setCurrentActiveRound] = useState<ApiOrderRound | null>(null);
+  const [isLoadingActiveRound, setIsLoadingActiveRound] = useState(false);
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>(mockGroceryItems);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
   const [notifications, setNotifications] = useState<ActivityNotification[]>(mockNotifications);
 
   const isAuthenticated = useMemo(() => !!user, [user]);
+
+  /**
+   * Fetches the real active grocery order round for the currently active society.
+   */
+  const refreshActiveRound = useCallback(async () => {
+    if (!activeSocietyPair?.society.id) {
+      setCurrentActiveRound(null);
+      return;
+    }
+    setIsLoadingActiveRound(true);
+    try {
+      const round = await api.rounds.getActive(activeSocietyPair.society.id);
+      setCurrentActiveRound(round);
+    } catch {
+      setCurrentActiveRound(null);
+    } finally {
+      setIsLoadingActiveRound(false);
+    }
+  }, [activeSocietyPair?.society.id]);
+
+  useEffect(() => {
+    if (activeSocietyPair?.society.id) {
+      refreshActiveRound();
+    } else {
+      setCurrentActiveRound(null);
+    }
+  }, [activeSocietyPair?.society.id, refreshActiveRound]);
 
   /**
    * Refreshes the user's active session, societies, and memberships.
@@ -265,12 +305,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentRole(newRole);
   };
 
-  const closeActiveRound = () => {
-    setActiveRound((prev) => ({
-      ...prev,
+  // Map real backend active round to the OrderRound interface
+  const activeRound: OrderRound = useMemo(() => {
+    if (currentActiveRound) {
+      const deadlineDate = new Date(currentActiveRound.deadline_at);
+      const deadlineFormatted =
+        deadlineDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+        ' on ' +
+        deadlineDate.toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+      return {
+        id: currentActiveRound.id,
+        roundNumber: currentActiveRound.round_number,
+        title: currentActiveRound.title,
+        status: currentActiveRound.status === 'open' ? 'open' : 'closed',
+        deadlineText: deadlineFormatted,
+        shopVisitDate: currentActiveRound.shopping_date,
+        volunteerName: 'Society Volunteer',
+        volunteerFlat: 'Volunteer Desk',
+        participatingFlatsCount: currentActiveRound.submissions_count || 0,
+        totalItemsCount: currentActiveRound.submissions_count || 0,
+        estimatedTotalValue: 0,
+      };
+    }
+    return {
+      ...mockActiveRound,
       status: 'closed',
-      deadlineText: 'Closed Today',
-    }));
+      title: 'No Active Grocery Round',
+      deadlineText: 'Ordering Closed',
+    };
+  }, [currentActiveRound]);
+
+  const createRound = async (data: {
+    title: string;
+    description?: string;
+    deadline_at: string;
+    shopping_date: string;
+  }) => {
+    if (!activeSocietyPair?.society.id) return { success: false, error: 'No active society selected' };
+    try {
+      const res = await api.rounds.create(activeSocietyPair.society.id, data);
+      return { success: true, round: res };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to create round' };
+    }
+  };
+
+  const openRound = async (roundId: string) => {
+    if (!activeSocietyPair?.society.id) return { success: false, error: 'No active society selected' };
+    try {
+      const res = await api.rounds.open(activeSocietyPair.society.id, roundId);
+      await refreshActiveRound();
+      return { success: true, round: res };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to open round' };
+    }
+  };
+
+  const closeRound = async (roundId: string) => {
+    if (!activeSocietyPair?.society.id) return { success: false, error: 'No active society selected' };
+    try {
+      const res = await api.rounds.close(activeSocietyPair.society.id, roundId);
+      await refreshActiveRound();
+      return { success: true, round: res };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to close round' };
+    }
+  };
+
+  const closeActiveRound = async () => {
+    if (currentActiveRound) {
+      await closeRound(currentActiveRound.id);
+    }
   };
 
   const toggleItemPurchased = (itemId: string) => {
@@ -350,6 +456,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentRole,
         switchRole,
         society,
+        currentActiveRound,
+        isLoadingActiveRound,
+        refreshActiveRound,
+        createRound,
+        openRound,
+        closeRound,
         activeRound,
         pastRounds: mockPastRounds,
         closeActiveRound,

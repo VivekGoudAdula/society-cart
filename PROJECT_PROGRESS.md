@@ -3,9 +3,9 @@
 **Project**: Society Cart  
 **Tagline**: Your Society. One Chat. One Bulk Order.  
 **Hackathon**: Nexconn Build Challenge 2026 (Track: Social & Community)  
-**Current Phase**: Phase 3 — Real Nexconn Chat Integration (Completed & 100% Verified)  
-**Completed Phases**: Phase 0, Phase 1, Phase 2, Phase 3  
-**Next Phase**: Phase 4 — Grocery Order Rounds  
+**Current Phase**: Phase 4 — Grocery Order Rounds (Completed & 100% Verified)  
+**Completed Phases**: Phase 0, Phase 1, Phase 2, Phase 3, Phase 4  
+**Next Phase**: Phase 5 — AI Grocery Understanding  
 
 ---
 
@@ -78,11 +78,20 @@
   - [x] End-to-end two-user verification script (`verify_e2e_chat.py`): verified Resident A (Flat A-101) & Resident B (Flat B-204) real message exchange and cross-society 403 isolation with 100% compliance.
   - [x] Frontend production build (`tsc -b && vite build`) verified with 0 errors.
 
-- [ ] **Phase 4 — Grocery Order Rounds**
-  - [ ] Volunteer opening and closing order rounds with deadlines.
-  - [ ] Active round banner and real-time state in chat.
-  - [ ] Linking chat messages to the active round.
-  - [ ] Post-closure correction workflow.
+- [x] **Phase 4 — Grocery Order Rounds**
+  - [x] `order_rounds` collection with partial unique index ensuring at most one active round per society.
+  - [x] `grocery_submissions` collection linking real Nexconn message IDs with resident flats and rounds.
+  - [x] Volunteer/admin APIs: create round (draft), open round (open), close round (closed), list rounds, get active round.
+  - [x] Role-Based Access Control enforcing volunteer/admin privilege on round lifecycle actions.
+  - [x] Real Nexconn system announcements broadcasted when rounds open and close via `POST /message/group/publish.json`.
+  - [x] Automatic deadline enforcement: background scheduler task running every 10s plus on-demand lazy expiration check.
+  - [x] Grocery order submission endpoint (`POST /api/societies/{id}/rounds/{id}/submissions`) rejecting submissions after round closure.
+  - [x] Frontend `AppContext` & `ChatContext` real-time state synchronization upon receiving round announcements.
+  - [x] Resident Dashboard & Society Chat dynamic active round banner with live countdown timer and order submission toggle.
+  - [x] Volunteer Operations Dashboard with Start Round modal, Close Round modal, and historical rounds table.
+  - [x] Backend test suite `backend/tests/test_phase4.py` (7 test groups, 16 scenarios, 100% passed).
+  - [x] End-to-end multi-user script verifying Volunteer Priya, Resident Rahul, Resident Sneha message exchange, closure, and auto-expiration.
+  - [x] Frontend production build (`tsc -b && vite build`) passed with 0 errors.
 
 - [ ] **Phase 5 — AI Grocery Understanding**
   - [ ] Groq API integration (Llama 3 inference).
