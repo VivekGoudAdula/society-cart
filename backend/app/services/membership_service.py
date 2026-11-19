@@ -4,9 +4,10 @@
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from fastapi import HTTPException, status
-from app.core.database import get_memberships_collection, get_users_collection
+from app.core.database import get_memberships_collection, get_users_collection, get_societies_collection
 from app.schemas.membership import MembershipResponse
 from app.services.society_service import _serialize_membership
+from app.services.nexconn_service import remove_resident_from_group
 
 
 async def get_active_membership(user_id: str, society_id: str) -> Optional[Dict[str, Any]]:
@@ -149,3 +150,10 @@ async def deactivate_membership(
         )
 
     await col.update_one(mq, {"$set": {"is_active": False}})
+
+    # Synchronize group membership revocation with Nexconn
+    societies_col = get_societies_collection()
+    society_oid = ObjectId(society_id) if ObjectId.is_valid(society_id) else society_id
+    society_doc = await societies_col.find_one({"_id": society_oid})
+    group_id = (society_doc or {}).get("nexconn_group_id") or f"society_{society_id}"
+    await remove_resident_from_group(target_mem["user_id"], group_id)

@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # External APIs (Nexconn, Groq)
     nexconn_app_key: str = ""
     nexconn_app_secret: str = ""
-    nexconn_api_base_url: str = ""
+    nexconn_api_base_url: str = "https://api-sg01.ronghub.com"
     groq_api_key: str = ""
 
     @property

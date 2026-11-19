@@ -16,6 +16,7 @@ from app.schemas.society import (
     UserSocietyMembershipResponse,
 )
 from app.schemas.membership import MembershipResponse
+from app.services.nexconn_service import create_nexconn_group, add_resident_to_group
 
 
 def _serialize_society(doc: Dict[str, Any]) -> SocietyResponse:
@@ -32,6 +33,7 @@ def _serialize_society(doc: Dict[str, Any]) -> SocietyResponse:
         created_at=doc.get("created_at", datetime.now(timezone.utc)),
         is_active=doc.get("is_active", True),
         total_flats=doc.get("total_flats"),
+        nexconn_group_id=doc.get("nexconn_group_id"),
     )
 
 
@@ -90,7 +92,12 @@ async def create_society(
     invite_code = await generate_unique_invite_code(request.name)
     now = datetime.now(timezone.utc)
 
+    society_oid = ObjectId()
+    society_id_str = str(society_oid)
+    nexconn_group_id = f"society_{society_id_str}"
+
     society_doc = {
+        "_id": society_oid,
         "name": request.name.strip(),
         "address": request.address.strip(),
         "city": request.city.strip(),
@@ -101,11 +108,17 @@ async def create_society(
         "created_by": user_id,
         "created_at": now,
         "is_active": True,
+        "nexconn_group_id": nexconn_group_id,
     }
 
-    res_society = await societies_col.insert_one(society_doc)
-    society_id_str = str(res_society.inserted_id)
-    society_doc["_id"] = res_society.inserted_id
+    await societies_col.insert_one(society_doc)
+
+    # Provision private group channel on Nexconn network
+    await create_nexconn_group(
+        group_id=nexconn_group_id,
+        group_name=society_doc["name"],
+        creator_user_id=user_id,
+    )
 
     # Create admin membership for the creator
     normalized_flat = request.creator_flat_number.strip().upper()
@@ -120,6 +133,10 @@ async def create_society(
 
     res_mem = await memberships_col.insert_one(membership_doc)
     membership_doc["_id"] = res_mem.inserted_id
+
+    # Synchronize user to society Nexconn group channel
+    group_id = society_doc.get("nexconn_group_id") or f"society_{society_id_str}"
+    await add_resident_to_group(user_id, group_id, society_doc["name"])
 
     return UserSocietyMembershipResponse(
         society=_serialize_society(society_doc),
@@ -200,6 +217,10 @@ async def join_society(
             status_code=status.HTTP_409_CONFLICT,
             detail="Membership conflict. Either you already belong to this society or the flat is occupied.",
         )
+
+    # Synchronize user to society Nexconn group channel
+    group_id = society_doc.get("nexconn_group_id") or f"society_{society_id_str}"
+    await add_resident_to_group(user_id, group_id, society_doc["name"])
 
     return UserSocietyMembershipResponse(
         society=_serialize_society(society_doc),

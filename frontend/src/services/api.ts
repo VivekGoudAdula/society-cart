@@ -142,4 +142,24 @@ export const api = {
         method: 'DELETE',
       }),
   },
+
+  chat: {
+    getToken: (societyId: string) =>
+      request<{
+        token: string;
+        app_key: string;
+        user_id: string;
+        group_id: string;
+        group_name: string;
+      }>('/api/chat/token', {
+        method: 'POST',
+        body: JSON.stringify({ society_id: societyId }),
+      }),
+
+    sendSystemMessage: (societyId: string, text: string, extra?: any) =>
+      request<{ status: string; message: string }>('/api/chat/system-message', {
+        method: 'POST',
+        body: JSON.stringify({ society_id: societyId, text, extra }),
+      }),
+  },
 };

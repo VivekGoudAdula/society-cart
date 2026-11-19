@@ -5,40 +5,60 @@ import {
   Clock,
   CheckCircle2,
   Building2,
+  Wifi,
+  WifiOff,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useChat } from '../context/ChatContext';
 import { Avatar } from '../components/common/Avatar';
 import { Badge } from '../components/common/Badge';
 
 /**
- * Screen 5: Society Chat Screen — Conversational interface where residents post grocery needs in natural language and the AI assistant extracts items.
+ * Screen 5: Society Chat Screen — Conversational interface backed by real-time Nexconn Group Chat.
+ * Residents post grocery needs and receive confirmations in real time.
  */
 export const SocietyChatPage: React.FC = () => {
-  const { currentUser, society, activeRound, chatMessages, sendChatMessage } = useApp();
+  const { currentUser, society, activeRound, isAuthenticated } = useApp();
+  const { connectionState, messages, isLoadingHistory, sendMessage, error: chatError } = useChat();
 
   const [inputMessage, setInputMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages]);
+  }, [messages]);
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim()) return;
-    sendChatMessage(inputMessage);
+    if (!inputMessage.trim() || isSending) return;
+
+    setSendError(null);
+    setIsSending(true);
+    const sentText = inputMessage;
     setInputMessage('');
+
+    const success = await sendMessage(sentText);
+    setIsSending(false);
+
+    if (!success) {
+      setInputMessage(sentText);
+      setSendError('Failed to deliver message to Nexconn channel. Please try again.');
+    }
   };
 
   const quickTemplates = [
     '5 kg sona masoori rice and 2 litre sunflower oil',
-    '3 kg onions and 2 kg potatoes for Flat ' + currentUser.flatNumber,
+    `3 kg onions and 2 kg potatoes for Flat ${currentUser.flatNumber}`,
     'Naaku 2 packets Aashirvaad atta kavali',
-    'B-402: 1 packet tata tea gold and 1 kg sugar',
+    `${currentUser.flatNumber}: 1 packet tata tea gold and 1 kg sugar`,
   ];
 
   return (
@@ -52,7 +72,11 @@ export const SocietyChatPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#18231E]">{society.name} Group Chat</h2>
-              <Badge size="sm" variant={activeRound.status === 'open' ? 'success' : 'neutral'} pulseDot={activeRound.status === 'open'}>
+              <Badge
+                size="sm"
+                variant={activeRound.status === 'open' ? 'success' : 'neutral'}
+                pulseDot={activeRound.status === 'open'}
+              >
                 Round #{activeRound.roundNumber} {activeRound.status.toUpperCase()}
               </Badge>
             </div>
@@ -66,42 +90,102 @@ export const SocietyChatPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Volunteer Info Pill */}
-        <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/70">
-          <Avatar name={activeRound.volunteerName} size="sm" roleTag="volunteer" />
-          <div className="text-left text-[11px]">
-            <p className="font-bold text-[#18231E] leading-tight">{activeRound.volunteerName}</p>
-            <p className="text-slate-500 text-[10px]">Round Volunteer ({activeRound.volunteerFlat})</p>
-          </div>
+        {/* Right side: Live Connection Status Pill */}
+        <div className="flex items-center gap-2">
+          {connectionState === 'connected' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[11px] font-bold text-emerald-800">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <Wifi className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">Nexconn Live</span>
+            </div>
+          ) : connectionState === 'connecting' || connectionState === 'reconnecting' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/80 text-[11px] font-bold text-amber-800">
+              <Loader2 className="h-3.5 w-3.5 text-amber-600 animate-spin" />
+              <span className="hidden sm:inline">Connecting...</span>
+            </div>
+          ) : isAuthenticated ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-600">
+              <WifiOff className="h-3.5 w-3.5 text-slate-400" />
+              <span className="hidden sm:inline">Connecting to Chat</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-[11px] font-semibold text-indigo-700">
+              <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">Demo Sandbox</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 2. Demo Disclaimer Banner */}
+      {/* 2. Banner: Active Connection Info */}
       <div className="bg-[#EAF5EE]/70 px-4 py-2 border-b border-[#23865B]/15 flex items-center justify-between text-xs text-[#196B48]">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 shrink-0 text-[#23865B]" />
           <span>
-            <strong>Interactive UI Demo:</strong> Messages trigger local state updates and simulated assistant extraction. Real Nexconn Chat integration activates in Phase 3.
+            {isAuthenticated ? (
+              <>
+                <strong>Nexconn Group Channel:</strong> Private apartment chat powered by{' '}
+                <code className="text-[11px] bg-white px-1.5 py-0.5 rounded font-mono border border-emerald-200">
+                  @nexconn/chat v26.5.1
+                </code>
+                . Messages sync across all connected flats.
+              </>
+            ) : (
+              <>
+                <strong>Demo Preview Mode:</strong> Sign in with your apartment credentials to connect to your live Nexconn group chat.
+              </>
+            )}
           </span>
         </div>
         <span className="text-[10px] bg-[#23865B] text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-wider hidden md:inline-block">
-          PHASE 1 PREVIEW
+          {isAuthenticated ? 'REAL-TIME ACTIVE' : 'PROTOTYPE PREVIEW'}
         </span>
       </div>
 
-      {/* 3. Messages Stream Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#F8FAF9]/50">
-        {/* Date Separator */}
-        <div className="flex items-center justify-center my-2">
-          <span className="px-3 py-1 rounded-full bg-slate-100 text-[11px] font-semibold text-[#718078]">
-            Today, {activeRound.deadlineText}
-          </span>
+      {/* 3. Error Banner (if any) */}
+      {(chatError || sendError) && (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 flex items-center gap-2 text-xs text-red-800">
+          <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+          <span>{sendError || chatError}</span>
         </div>
+      )}
 
-        {chatMessages.map((msg) => {
-          const isCurrentUser = msg.senderId === currentUser.id;
+      {/* 4. Messages Stream Area */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#F8FAF9]/50">
+        {/* Loading History Indicator */}
+        {isLoadingHistory && (
+          <div className="flex items-center justify-center py-6 gap-2 text-xs text-[#718078]">
+            <Loader2 className="h-4 w-4 animate-spin text-[#23865B]" />
+            <span>Loading message history from Nexconn...</span>
+          </div>
+        )}
+
+        {/* Date Separator */}
+        {!isLoadingHistory && (
+          <div className="flex items-center justify-center my-2">
+            <span className="px-3 py-1 rounded-full bg-slate-100 text-[11px] font-semibold text-[#718078]">
+              Today, {activeRound.deadlineText}
+            </span>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoadingHistory && messages.length === 0 && (
+          <div className="text-center py-12 space-y-2">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EAF5EE] text-[#196B48]">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <h3 className="text-xs font-bold text-[#18231E]">Welcome to {society.name} Chat!</h3>
+            <p className="text-[11px] text-[#718078] max-w-sm mx-auto">
+              No messages posted in this round yet. Be the first to share your grocery requirements with your neighbors!
+            </p>
+          </div>
+        )}
+
+        {messages.map((msg) => {
+          const isCurrentUser = msg.isSelf;
           const isVolunteer = msg.senderRole === 'volunteer';
-          const isBot = msg.senderRole === 'bot';
+          const isBot = msg.isSystemBot || msg.senderRole === 'bot';
 
           // Bot / AI Assistant Interpretation Card
           if (isBot) {
@@ -113,13 +197,16 @@ export const SocietyChatPage: React.FC = () => {
                 <div className="flex-1 rounded-2xl bg-white border border-indigo-100 p-4 shadow-xs text-left">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                      {msg.senderName} <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-semibold">AI Assistant</span>
+                      {msg.senderName}{' '}
+                      <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-semibold">
+                        System Assistant
+                      </span>
                     </span>
                     <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
                   </div>
                   <p className="text-xs text-slate-700 leading-relaxed">{msg.text}</p>
 
-                  {/* Extracted Structured Grocery Chips */}
+                  {/* Extracted Structured Grocery Chips (if present) */}
                   {msg.structuredItems && msg.structuredItems.length > 0 && (
                     <div className="mt-2.5 pt-2 border-t border-indigo-50 flex flex-wrap gap-1.5">
                       {msg.structuredItems.map((item, idx) => (
@@ -148,7 +235,7 @@ export const SocietyChatPage: React.FC = () => {
                     <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
                       {msg.senderName}
                       <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-1.5 py-0.2 rounded font-bold">
-                        VOLUNTEER ({msg.senderFlat})
+                        VOLUNTEER {msg.senderFlat ? `(${msg.senderFlat})` : ''}
                       </span>
                     </span>
                     <span className="text-[10px] text-emerald-700">{msg.timestamp}</span>
@@ -192,9 +279,9 @@ export const SocietyChatPage: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 4. Quick Suggestions Bar */}
+      {/* 5. Quick Suggestions Bar */}
       <div className="px-4 py-2 bg-slate-50 border-t border-[#E6ECE8] flex items-center gap-2 overflow-x-auto text-xs">
-        <span className="text-[11px] font-bold text-slate-500 shrink-0">Try typing:</span>
+        <span className="text-[11px] font-bold text-slate-500 shrink-0">Quick format:</span>
         {quickTemplates.map((tpl, i) => (
           <button
             key={i}
@@ -207,23 +294,24 @@ export const SocietyChatPage: React.FC = () => {
         ))}
       </div>
 
-      {/* 5. Message Input Bar */}
+      {/* 6. Message Input Bar */}
       <form onSubmit={handleSend} className="p-3 sm:p-4 bg-white border-t border-[#E6ECE8]">
         <div className="flex items-center gap-2">
           <input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
+            disabled={isSending}
             placeholder={`Message ${society.name} (e.g. 5 kg rice, 1 litre oil, Flat ${currentUser.flatNumber})...`}
             className="flex-1 rounded-xl border border-[#E6ECE8] bg-[#F8FAF9] px-4 py-3 text-sm text-[#18231E] placeholder:text-slate-400 focus:bg-white focus:border-[#23865B] focus:outline-none focus:ring-2 focus:ring-[#23865B]/20 transition-all"
           />
           <button
             type="submit"
-            disabled={!inputMessage.trim()}
+            disabled={!inputMessage.trim() || isSending}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#23865B] text-white hover:bg-[#196B48] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-[#23865B]/20"
             aria-label="Send message"
           >
-            <Send className="h-4 w-4" />
+            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
       </form>

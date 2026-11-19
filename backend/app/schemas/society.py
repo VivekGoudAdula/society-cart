@@ -40,6 +40,7 @@ class SocietyResponse(BaseModel):
     created_at: datetime
     is_active: bool = True
     total_flats: Optional[int] = None
+    nexconn_group_id: Optional[str] = None
 
 
 class UserSocietyMembershipResponse(BaseModel):

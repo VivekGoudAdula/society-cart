@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { ChatProvider } from './context/ChatContext';
 import { AuthLayout } from './layouts/AuthLayout';
 import { AppLayout } from './layouts/AppLayout';
 import { WelcomePage } from './pages/WelcomePage';
@@ -18,27 +19,29 @@ import { OrderSummaryPage } from './pages/OrderSummaryPage';
 export default function App(): React.JSX.Element {
   return (
     <AppProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public / Auth Flows */}
-          <Route element={<AuthLayout />}>
-            <Route path="/" element={<WelcomePage />} />
-            <Route path="/society-setup" element={<SocietySetupPage />} />
-          </Route>
+      <ChatProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public / Auth Flows */}
+            <Route element={<AuthLayout />}>
+              <Route path="/" element={<WelcomePage />} />
+              <Route path="/society-setup" element={<SocietySetupPage />} />
+            </Route>
 
-          {/* Main Society Application Pages */}
-          <Route element={<AppLayout />}>
-            <Route path="/resident" element={<ResidentDashboard />} />
-            <Route path="/volunteer" element={<VolunteerDashboard />} />
-            <Route path="/chat" element={<SocietyChatPage />} />
-            <Route path="/shopping-list" element={<ShoppingListPage />} />
-            <Route path="/order-summary" element={<OrderSummaryPage />} />
-          </Route>
+            {/* Main Society Application Pages */}
+            <Route element={<AppLayout />}>
+              <Route path="/resident" element={<ResidentDashboard />} />
+              <Route path="/volunteer" element={<VolunteerDashboard />} />
+              <Route path="/chat" element={<SocietyChatPage />} />
+              <Route path="/shopping-list" element={<ShoppingListPage />} />
+              <Route path="/order-summary" element={<OrderSummaryPage />} />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ChatProvider>
     </AppProvider>
   );
 }

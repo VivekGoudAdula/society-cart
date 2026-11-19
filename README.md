@@ -314,10 +314,51 @@ All 14 test cases covering all 15 scenarios (registration, unique email, login, 
 
 ---
 
-## 13. Current Development Status
+## 13. Phase 3 Real Nexconn Chat Integration
+
+Phase 3 transitions Society Cart from simulated messaging to real-time group communications powered by the live Nexconn / RongCloud infrastructure:
+
+### Architecture & Security
+
+- **Server-Side Token Minting (`POST /api/chat/token`)**:
+  - The client authenticates to FastAPI using standard JWT Bearer tokens.
+  - The backend verifies that the requester has an active membership in the target society.
+  - The backend mints a user-specific Nexconn session token via the live regional endpoint (`https://api-sg01.ronghub.com/user/getToken.json`) using SHA1 HMAC signatures (`App-Key`, `Nonce`, `Timestamp`, `Signature`).
+  - `NEXCONN_APP_SECRET` remains strictly confidential on the backend server and is never exposed to browsers.
+  - Non-members or residents from another society are rejected with `HTTP 403 Forbidden`.
+- **Automatic Group Channel Lifecycle**:
+  - Society creation automatically provisions a distinct group channel: `nexconn_group_id: "society_{society_id}"`.
+  - Residents joining a society are automatically synced into the group (`POST /group/join.json`).
+  - Members leaving or deactivated are automatically unmapped (`POST /group/quit.json`).
+- **System Bot Messaging (`POST /api/chat/system-message`)**:
+  - Enables backend-triggered broadcasts (round open/close, order notifications) using `sender_id: "society_cart_bot"`.
+- **Frontend Real-time Integration**:
+  - Built with `@nexconn/engine@26.5.1` and `@nexconn/chat@26.5.1`.
+  - Singleton `NexconnClient` handles connection status tracking (`CONNECTED`, `CONNECTING`, `DISCONNECTED`), message dispatch (`GroupChannel.sendMessage`), and message stream subscription.
+  - `ChatContext` enriches raw incoming messages with real apartment resident data (Flat number, Name, Role badge).
+  - Preserves the full Phase 1 UI design system, showing a live status indicator (`Nexconn Live`), loading skeletons, and delivery error feedback.
+
+### Verification & Test Suite
+
+Run the Phase 3 automated test suite:
+```bash
+pytest backend/tests/test_phase3.py -v
+```
+All test scenarios pass with 100% compliance:
+1. `test_chat_token_requires_authentication`: Confirms 401 Unauthorized for unauthenticated requests.
+2. `test_chat_token_rejects_non_member`: Confirms 403 Forbidden for non-residents.
+3. `test_chat_token_success_for_active_member`: Returns valid Nexconn token and mapped `group_id`.
+4. `test_two_residents_get_distinct_tokens_same_group`: Verifies distinct session tokens for different flats mapped to the same group channel.
+5. `test_system_message_broadcast`: Confirms backend system bot broadcasts succeed.
+6. `test_chat_token_rejects_deactivated_member`: Confirms 403 Forbidden when membership is deactivated.
+
+---
+
+## 14. Current Development Status
 
 - **Completed Phases**:
   - Phase 0: Workspace Preparation & Architecture
   - Phase 1: UI Foundation & Application Layout (7 Screens & Design System)
   - Phase 2: Backend, Database & User Management (FastAPI, MongoDB Atlas, JWT, RBAC)
-- **Next Phase**: Phase 3 — Real Nexconn Chat Integration
+  - Phase 3: Real Nexconn Chat Integration (Live Engine/Chat SDKs, Token Minting, Group Channels, 100% E2E Verified)
+- **Next Phase**: Phase 4 — Grocery Order Rounds
