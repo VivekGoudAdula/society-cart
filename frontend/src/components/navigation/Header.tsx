@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Bell, Repeat, ShieldCheck, User } from 'lucide-react';
+import { Bell, Repeat, ShieldCheck, User, ChevronDown } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
 import { Badge } from '../common/Badge';
 
 /**
- * Top application header with notifications drawer, society badge, and role switcher.
+ * Top application header with notifications drawer, society badge, society switcher, and role indicator.
  */
 export const Header: React.FC = () => {
   const {
@@ -13,12 +13,15 @@ export const Header: React.FC = () => {
     currentRole,
     switchRole,
     society,
+    userSocieties,
+    setActiveSocietyId,
     notifications,
     unreadNotificationsCount,
     markNotificationsRead,
   } = useApp();
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSocietyMenu, setShowSocietyMenu] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-[#E6ECE8] bg-white/95 backdrop-blur-xs px-4 sm:px-6">
@@ -31,11 +34,15 @@ export const Header: React.FC = () => {
             </h2>
             <Badge
               size="sm"
-              variant={currentRole === 'volunteer' ? 'primary' : 'neutral'}
+              variant={currentRole === 'volunteer' ? 'primary' : currentRole === 'admin' ? 'warning' : 'neutral'}
             >
               {currentRole === 'volunteer' ? (
                 <span className="flex items-center gap-1">
                   <ShieldCheck className="h-3 w-3 text-[#23865B]" /> Volunteer View
+                </span>
+              ) : currentRole === 'admin' ? (
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3 text-amber-600" /> Admin View
                 </span>
               ) : (
                 <span className="flex items-center gap-1">
@@ -44,9 +51,54 @@ export const Header: React.FC = () => {
               )}
             </Badge>
           </div>
-          <p className="text-[11px] text-[#718078] hidden sm:block">
-            {society.name} • Flat {currentUser.flatNumber}
-          </p>
+
+          {/* Society indicator with switcher dropdown if multiple societies */}
+          <div className="relative inline-block text-[11px] text-[#718078] hidden sm:block">
+            {userSocieties.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => setShowSocietyMenu(!showSocietyMenu)}
+                className="inline-flex items-center gap-1 font-semibold text-[#18231E] hover:text-[#23865B] transition-colors"
+              >
+                <span>{society.name}</span>
+                <ChevronDown className="h-3 w-3" />
+                <span className="text-[#718078] font-normal">• Flat {currentUser.flatNumber}</span>
+              </button>
+            ) : (
+              <span>
+                {society.name} • Flat {currentUser.flatNumber}
+              </span>
+            )}
+
+            {showSocietyMenu && userSocieties.length > 1 && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowSocietyMenu(false)} />
+                <div className="absolute left-0 mt-1 w-56 rounded-xl border border-[#E6ECE8] bg-white p-2 shadow-lg z-50">
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Switch Society
+                  </p>
+                  {userSocieties.map((pair) => (
+                    <button
+                      key={pair.society.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveSocietyId(pair.society.id);
+                        setShowSocietyMenu(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors ${
+                        pair.society.id === society.id
+                          ? 'bg-[#EAF5EE] text-[#196B48]'
+                          : 'text-[#18231E] hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="truncate">{pair.society.name}</span>
+                      <span className="text-[10px] text-[#718078]">Flat {pair.membership.flat_number}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

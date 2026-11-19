@@ -1,10 +1,12 @@
 import React from 'react';
 
+import { UserRole } from '../../types';
+
 export interface AvatarProps {
   name: string;
   src?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
-  roleTag?: 'resident' | 'volunteer' | 'bot';
+  roleTag?: UserRole | 'bot';
   className?: string;
 }
 
@@ -35,9 +37,10 @@ export const Avatar: React.FC<AvatarProps> = ({
     xl: 'h-14 w-14 text-base',
   };
 
-  const ringStyles = {
+  const ringStyles: Record<UserRole | 'bot', string> = {
     volunteer: 'ring-2 ring-emerald-500',
     resident: 'ring-1 ring-slate-200',
+    admin: 'ring-2 ring-amber-500',
     bot: 'ring-2 ring-indigo-400',
   };
 

@@ -271,7 +271,53 @@ Society Cart utilizes MongoDB Atlas for cloud document storage. Follow these ste
 
 ---
 
-## 12. Current Development Status
+## 12. Phase 2 Backend & Database Architecture
 
-- **Phase**: Phase 0 — Workspace Preparation & Architecture (**Completed**)
-- **Next Phase**: Phase 1 — UI Foundation & Application Layout (Awaiting User Sign-off)
+Phase 2 transforms Society Cart into a data-driven system with MongoDB Atlas, secure auth, and role-based access control:
+
+### Core Database Collections & Indexes
+
+- `users`: Account profiles with bcrypt password hashes, normalized unique emails.
+  - Unique Index: `email`
+- `societies`: Apartment communities with auto-generated unique invite codes and metadata.
+  - Unique Index: `invite_code`
+- `memberships`: Connects users to societies and unique apartment flats with roles (`admin`, `volunteer`, `resident`).
+  - Compound Partial Unique Index: `(user_id, society_id)` where `is_active: true`
+  - Compound Partial Unique Index: `(society_id, flat_number)` where `is_active: true`
+
+### API Endpoints
+
+- **Authentication (`/api/auth`)**:
+  - `POST /register`: Registers new user, returns JWT access and refresh tokens.
+  - `POST /login`: Validates credentials with bcrypt, returns JWT.
+  - `POST /refresh`: Issues a refreshed access token using refresh token.
+  - `POST /logout`: Clears auth cookies and session state.
+  - `GET /me`: Restores current authenticated user profile and all joined societies.
+- **User Management (`/api/users`)**:
+  - `GET /me`: Returns active user profile.
+  - `PATCH /me`: Safely updates name and phone (forbids updating email, password_hash, or roles).
+- **Society Management (`/api/societies`)**:
+  - `POST /`: Creates an apartment society, generates 8-char unique invite code, assigns creator as `admin`.
+  - `POST /join`: Joins society via invite code & unique flat number (prevents duplicate memberships or occupied flats).
+  - `GET /my`: Lists all societies and flat memberships for the authenticated user.
+  - `GET /{society_id}`: Gets society details (membership required).
+  - `GET /{society_id}/members`: Lists society residents (membership required).
+  - `PATCH /{society_id}/members/{membership_id}/role`: Promotes/demotes member between `volunteer` and `resident` (requires society `admin`).
+
+### Automated Test Suite (15 Scenarios)
+
+Run the full automated test suite:
+```bash
+pytest backend/tests/test_phase2.py -v
+```
+All 14 test cases covering all 15 scenarios (registration, unique email, login, protected routes, society creation, automatic admin assignment, valid join code, invalid join code, duplicate membership, duplicate flat number, RBAC restrictions, admin volunteer role assignment, cross-society isolation, and protected profile fields) pass with 100% compliance.
+
+---
+
+## 13. Current Development Status
+
+- **Completed Phases**:
+  - Phase 0: Workspace Preparation & Architecture
+  - Phase 1: UI Foundation & Application Layout (7 Screens & Design System)
+  - Phase 2: Backend, Database & User Management (FastAPI, MongoDB Atlas, JWT, RBAC)
+- **Next Phase**: Phase 3 — Real Nexconn Chat Integration

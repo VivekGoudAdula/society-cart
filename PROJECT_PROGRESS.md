@@ -3,9 +3,9 @@
 **Project**: Society Cart  
 **Tagline**: Your Society. One Chat. One Bulk Order.  
 **Hackathon**: Nexconn Build Challenge 2026 (Track: Social & Community)  
-**Current Phase**: Phase 1 — UI Foundation & Application Layout (Completed, Awaiting Review)  
-**Completed Phases**: Phase 0, Phase 1  
-**Next Phase**: Phase 2 — Backend, Database & User Management  
+**Current Phase**: Phase 2 — Backend, Database & User Management (Completed, All 15 Test Scenarios Passed)  
+**Completed Phases**: Phase 0, Phase 1, Phase 2  
+**Next Phase**: Phase 3 — Real Nexconn Chat Integration  
 
 ---
 
@@ -37,12 +37,30 @@
   - [x] Central realistic Indian apartment mock data (`Greenfield Heights Residency`, Kondapur, Hyderabad).
   - [x] Production build verification (`tsc -b && vite build`) passed with 0 errors.
 
-- [ ] **Phase 2 — Backend, Database & User Management**
-  - [ ] MongoDB Atlas connection and PyMongo configuration.
-  - [ ] User authentication, session management, and flat profiles.
-  - [ ] Role-based access control (Admin, Resident, Volunteer).
-  - [ ] Society creation and membership join codes.
-  - [ ] Core collections: `users`, `societies`, `memberships`.
+- [x] **Phase 2 — Backend, Database & User Management**
+  - [x] MongoDB Atlas connection and PyMongo asynchronous client lifecycle management.
+  - [x] Core collections with strict uniqueness indexes:
+    - `users.email` (unique)
+    - `societies.invite_code` (unique)
+    - `memberships.(user_id, society_id)` (unique for active memberships)
+    - `memberships.(society_id, flat_number)` (unique for active memberships in a society)
+  - [x] Secure authentication with bcrypt password hashing and JWT access & refresh tokens.
+  - [x] User management APIs: register, login, refresh, logout, `/auth/me`, and `/users/me` (protecting sensitive fields).
+  - [x] Society management APIs:
+    - Create society with automatic unique 8-character invite code and automatic `admin` membership for creator.
+    - Join society using invite code and flat number (with duplicate check and occupied flat check).
+    - Society member listing and admin volunteer promotion/revocation (`PATCH /api/societies/{id}/members/{id}/role`).
+    - Cross-society data isolation.
+  - [x] Role-Based Access Control (RBAC): `admin`, `volunteer`, `resident` with dependency guards.
+  - [x] Automated test suite covering all 15 scenarios in `backend/tests/test_phase2.py` (14/14 tests passed).
+  - [x] Connected frontend to real APIs:
+    - `frontend/src/services/api.ts` complete API client and token storage.
+    - `AppContext.tsx` authenticated session restoration, real login/register/logout/createSociety/joinSociety.
+    - `WelcomePage.tsx` tabbed Sign In & Register forms with real backend error feedback.
+    - `SocietySetupPage.tsx` real society creation and code copy, real join with error handling.
+    - `VolunteerDashboard.tsx` real society roster view and Admin volunteer promotion/demotion.
+    - `Header.tsx` & `Sidebar.tsx` real user profile, flat number, role badges, and multiple-society switcher.
+  - [x] Full production frontend build (`tsc -b && vite build`) passed with 0 errors.
 
 - [ ] **Phase 3 — Real Nexconn Chat Integration**
   - [ ] Secure backend token generation service (`POST /v4/auth/access-token/issue`).

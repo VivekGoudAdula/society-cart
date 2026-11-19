@@ -14,10 +14,10 @@ import { Avatar } from '../common/Avatar';
 import { Badge } from '../common/Badge';
 
 /**
- * Desktop left sidebar with role-aware navigation and demo role switcher.
+ * Desktop left sidebar with role-aware navigation and session management.
  */
 export const Sidebar: React.FC = () => {
-  const { currentUser, currentRole, switchRole, society, activeRound } = useApp();
+  const { currentUser, currentRole, switchRole, society, activeRound, logout } = useApp();
   const navigate = useNavigate();
 
   const handleRoleToggle = () => {
@@ -28,6 +28,11 @@ export const Sidebar: React.FC = () => {
       switchRole('resident');
       navigate('/resident');
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
   };
 
   const residentNavItems = [
@@ -43,7 +48,7 @@ export const Sidebar: React.FC = () => {
     { label: 'Orders & Savings', path: '/order-summary', icon: Receipt },
   ];
 
-  const navItems = currentRole === 'resident' ? residentNavItems : volunteerNavItems;
+  const navItems = currentRole === 'volunteer' || currentRole === 'admin' ? volunteerNavItems : residentNavItems;
 
   return (
     <aside className="hidden lg:flex w-64 flex-col justify-between border-r border-[#E6ECE8] bg-white h-screen sticky top-0 px-4 py-5 select-none z-20">
@@ -110,7 +115,7 @@ export const Sidebar: React.FC = () => {
             <span>Switch to {currentRole === 'resident' ? 'Volunteer' : 'Resident'}</span>
           </div>
           <span className="text-[10px] bg-[#23865B] text-white px-1.5 py-0.5 rounded-md font-bold uppercase">
-            DEMO
+            ROLE
           </span>
         </button>
 
@@ -124,9 +129,9 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => navigate('/')}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-            title="Sign Out / Back to Welcome"
+            onClick={handleLogout}
+            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 transition-colors"
+            title="Sign Out"
           >
             <LogOut className="h-4 w-4" />
           </button>

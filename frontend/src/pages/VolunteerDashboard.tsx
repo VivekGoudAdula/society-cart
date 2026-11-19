@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Layers,
@@ -10,6 +10,10 @@ import {
   MessageSquare,
   Lock,
   Calendar,
+  ShieldCheck,
+  User,
+  Shield,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PageHeader } from '../components/common/PageHeader';
@@ -18,28 +22,94 @@ import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
 import { ConfirmationDialog } from '../components/common/ConfirmationDialog';
+import { api } from '../services/api';
+import { ApiMembership } from '../types';
 
 /**
- * Screen 4: Volunteer Operations Dashboard — Logistics control center for closing rounds, tallying bulk items, and tracking orders.
+ * Screen 4: Volunteer Operations Dashboard — Logistics control center for closing rounds,
+ * tallying bulk items, and managing apartment community resident roles.
  */
 export const VolunteerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, society, activeRound, pastRounds, closeActiveRound, groceryItems } = useApp();
+  const {
+    currentUser,
+    society,
+    activeRound,
+    pastRounds,
+    closeActiveRound,
+    groceryItems,
+    activeSocietyPair,
+    isAuthenticated,
+  } = useApp();
 
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [members, setMembers] = useState<ApiMembership[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [memberMessage, setMemberMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const purchasedCount = groceryItems.filter((i) => i.isPurchased).length;
   const progressPercent = Math.round((purchasedCount / groceryItems.length) * 100);
+
+  const isAdmin = activeSocietyPair?.membership.role === 'admin';
+
+  /**
+   * Fetches real registered members for the active society.
+   */
+  const loadMembers = async () => {
+    if (!activeSocietyPair?.society.id) return;
+    setIsLoadingMembers(true);
+    try {
+      const data = await api.societies.getMembers(activeSocietyPair.society.id);
+      setMembers(data);
+    } catch {
+      // If error (e.g. unauthenticated demo), fallback will be empty
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && activeSocietyPair) {
+      loadMembers();
+    }
+  }, [isAuthenticated, activeSocietyPair]);
+
+  /**
+   * Admin promotion or demotion of a society member between volunteer and resident roles.
+   */
+  const handleToggleVolunteerRole = async (member: ApiMembership) => {
+    if (!activeSocietyPair || !isAdmin) return;
+    const newRole = member.role === 'volunteer' ? 'resident' : 'volunteer';
+    setUpdatingMemberId(member.id);
+    setMemberMessage(null);
+
+    try {
+      await api.societies.assignRole(activeSocietyPair.society.id, member.id, newRole);
+      setMemberMessage({
+        type: 'success',
+        text: `Updated Flat ${member.flat_number} (${member.user_name || 'Resident'}) to ${newRole}.`,
+      });
+      await loadMembers();
+    } catch (err: any) {
+      setMemberMessage({
+        type: 'error',
+        text: err.message || 'Failed to update member role.',
+      });
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Top Header */}
       <PageHeader
         title={`Operations Dashboard — ${currentUser.name.split(' ')[0]}`}
-        description={`${society.name} • Society Volunteer Coordinator`}
+        description={`${society.name} • Society Management & Operations`}
         badge={
-          <Badge variant="primary" size="md">
-            Volunteer View
+          <Badge variant={isAdmin ? 'warning' : 'primary'} size="md">
+            {isAdmin ? 'Admin View' : 'Volunteer View'}
           </Badge>
         }
         actions={
@@ -74,11 +144,11 @@ export const VolunteerDashboard: React.FC = () => {
         />
 
         <StatCard
-          label="Participating Flats"
-          value={`${activeRound.participatingFlatsCount} Flats`}
-          subtext="Out of 128 society flats"
+          label="Registered Residents"
+          value={members.length > 0 ? `${members.length} Members` : `${activeRound.participatingFlatsCount} Flats`}
+          subtext={`Society: ${society.name}`}
           icon={<Users className="h-5 w-5" />}
-          trend={{ value: '+4 flats vs last round', isPositive: true }}
+          trend={{ value: 'Active community roster', isPositive: true }}
         />
 
         <StatCard
@@ -96,6 +166,109 @@ export const VolunteerDashboard: React.FC = () => {
           trend={{ value: 'Est. ~₹1,420 community savings', isPositive: true }}
         />
       </div>
+
+      {/* Society Members Management Card (RBAC) */}
+      {isAuthenticated && members.length > 0 && (
+        <Card className="p-6 border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-[#23865B]" />
+              <h3 className="text-sm font-bold text-[#18231E]">Society Residents & Roles</h3>
+              <Badge variant="neutral" size="sm">
+                {members.length} Registered
+              </Badge>
+            </div>
+            <button
+              onClick={loadMembers}
+              disabled={isLoadingMembers}
+              className="inline-flex items-center gap-1 text-xs text-[#718078] hover:text-[#23865B] transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoadingMembers ? 'animate-spin' : ''}`} />
+              <span>Refresh Roster</span>
+            </button>
+          </div>
+
+          {memberMessage && (
+            <div
+              className={`mb-4 p-3 rounded-xl text-xs font-semibold ${
+                memberMessage.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-red-50 text-red-800 border border-red-200'
+              }`}
+            >
+              {memberMessage.text}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="py-2.5 px-3">Flat</th>
+                  <th className="py-2.5 px-3">Name</th>
+                  <th className="py-2.5 px-3">Email</th>
+                  <th className="py-2.5 px-3">Role</th>
+                  {isAdmin && <th className="py-2.5 px-3 text-right">Role Assignment</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E6ECE8]">
+                {members.map((m) => (
+                  <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="py-3 px-3 font-bold text-[#18231E]">Flat {m.flat_number}</td>
+                    <td className="py-3 px-3 font-semibold text-[#18231E]">
+                      {m.user_name || 'Resident'}
+                    </td>
+                    <td className="py-3 px-3 text-[#718078]">{m.user_email || '—'}</td>
+                    <td className="py-3 px-3">
+                      <Badge
+                        size="sm"
+                        variant={m.role === 'admin' ? 'warning' : m.role === 'volunteer' ? 'primary' : 'neutral'}
+                      >
+                        {m.role === 'admin' ? (
+                          <span className="flex items-center gap-1">
+                            <Shield className="h-3 w-3 text-amber-600" /> Admin
+                          </span>
+                        ) : m.role === 'volunteer' ? (
+                          <span className="flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3 text-[#23865B]" /> Volunteer
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <User className="h-3 w-3 text-slate-500" /> Resident
+                          </span>
+                        )}
+                      </Badge>
+                    </td>
+                    {isAdmin && (
+                      <td className="py-3 px-3 text-right">
+                        {m.role === 'admin' ? (
+                          <span className="text-[11px] text-slate-400 font-medium">Society Creator</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant={m.role === 'volunteer' ? 'outline' : 'primary'}
+                            isLoading={updatingMemberId === m.id}
+                            onClick={() => handleToggleVolunteerRole(m)}
+                            leftIcon={
+                              m.role === 'volunteer' ? (
+                                <User className="h-3.5 w-3.5" />
+                              ) : (
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              )
+                            }
+                          >
+                            {m.role === 'volunteer' ? 'Revoke Volunteer' : 'Make Volunteer'}
+                          </Button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* Active Round Management Operational Card */}
       <Card className="p-6 border-slate-200">

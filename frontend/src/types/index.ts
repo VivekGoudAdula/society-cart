@@ -2,7 +2,38 @@
  * Core TypeScript type definitions for Society Cart frontend.
  */
 
-export type UserRole = 'resident' | 'volunteer';
+export type UserRole = 'resident' | 'volunteer' | 'admin';
+
+export interface ApiSociety {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state?: string;
+  country: string;
+  invite_code: string;
+  created_by: string;
+  created_at: string;
+  is_active: boolean;
+  total_flats?: number;
+}
+
+export interface ApiMembership {
+  id: string;
+  user_id: string;
+  society_id: string;
+  flat_number: string;
+  role: UserRole;
+  joined_at: string;
+  is_active: boolean;
+  user_name?: string;
+  user_email?: string;
+}
+
+export interface UserSocietyPair {
+  society: ApiSociety;
+  membership: ApiMembership;
+}
 
 export interface UserProfile {
   id: string;
@@ -74,7 +105,7 @@ export interface ChatMessage {
   id: string;
   senderId: string;
   senderName: string;
-  senderRole: 'resident' | 'volunteer' | 'bot';
+  senderRole: UserRole | 'bot';
   senderFlat?: string;
   avatarUrl?: string;
   timestamp: string;

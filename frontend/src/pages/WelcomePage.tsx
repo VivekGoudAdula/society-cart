@@ -8,31 +8,49 @@ import {
   Sparkles,
   ShieldCheck,
   User,
+  UserPlus,
+  LogIn,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 
+type AuthMode = 'login' | 'register';
+
 /**
- * Screen 1: Welcome & Login experience with role demo portals and 3-step value workflow.
+ * Screen 1: Welcome & Authentication experience with Sign In, Registration,
+ * and quick demo portals for hackathon review.
  */
 export const WelcomePage: React.FC = () => {
   const navigate = useNavigate();
-  const { switchRole } = useApp();
+  const { login, register, switchRole } = useApp();
 
-  const [identifier, setIdentifier] = useState('rahul.sharma@example.com');
-  const [password, setPassword] = useState('demo1234');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+
+  // Sign In state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  // Register state
+  const [registerName, setRegisterName] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPhone, setRegisterPhone] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  /**
+   * Handles user login submission.
+   */
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!identifier.trim()) {
-      setError('Please enter your email or phone number.');
+    if (!email.trim()) {
+      setError('Please enter your email address.');
       return;
     }
     if (!password.trim() || password.length < 6) {
@@ -41,19 +59,59 @@ export const WelcomePage: React.FC = () => {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      // If logging in with volunteer email, route to volunteer
-      if (identifier.toLowerCase().includes('volunteer') || identifier.toLowerCase().includes('priya')) {
-        switchRole('volunteer');
-        navigate('/volunteer');
-      } else {
-        switchRole('resident');
-        navigate('/resident');
-      }
-    }, 400);
+    const result = await login(email.trim(), password);
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error || 'Invalid email or password.');
+      return;
+    }
+
+    // Redirect to dashboard or society setup
+    navigate('/resident');
   };
 
+  /**
+   * Handles user registration submission.
+   */
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!registerName.trim()) {
+      setError('Please enter your full name.');
+      return;
+    }
+    if (!registerEmail.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (!registerPassword.trim() || registerPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setIsLoading(true);
+    const result = await register(
+      registerName.trim(),
+      registerEmail.trim(),
+      registerPassword,
+      registerPhone.trim() || undefined
+    );
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error || 'Registration failed.');
+      return;
+    }
+
+    // New user has no society yet — take them directly to society setup
+    navigate('/society-setup');
+  };
+
+  /**
+   * Instant demo access for reviewers without credentials.
+   */
   const handleDemoAccess = (role: 'resident' | 'volunteer') => {
     switchRole(role);
     if (role === 'resident') {
@@ -70,61 +128,161 @@ export const WelcomePage: React.FC = () => {
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#23865B] text-white shadow-md shadow-[#23865B]/20">
           <ShoppingCart className="h-7 w-7" />
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#18231E]">Society Cart</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#18231E]">
+          Society Cart
+        </h1>
         <p className="text-sm sm:text-base font-semibold text-[#23865B]">
           Your Society. One Chat. One Bulk Order.
         </p>
         <p className="max-w-md mx-auto text-xs sm:text-sm text-[#718078] leading-relaxed">
-          Coordinate grocery buying with your neighbors in a single group chat. Volunteers buy in bulk at wholesale rates, saving money and hassle for everyone.
+          Coordinate grocery buying with your apartment neighbors. Submit items in chat, pool orders in bulk, and save money through wholesale group buying.
         </p>
       </div>
 
-      {/* Login & Demo Selection Card */}
+      {/* Auth Card */}
       <Card className="p-6 sm:p-8">
-        <form onSubmit={handleLoginSubmit} className="space-y-4">
-          <Input
-            label="Email or Mobile Number"
-            type="text"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="e.g. rahul@example.com or 9876543210"
-            required
-          />
+        {/* Tab Switcher */}
+        <div className="flex rounded-xl bg-slate-100 p-1 mb-6">
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('login');
+              setError('');
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+              authMode === 'login'
+                ? 'bg-white text-[#18231E] shadow-xs'
+                : 'text-[#718078] hover:text-[#18231E]'
+            }`}
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            <span>Sign In</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('register');
+              setError('');
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+              authMode === 'register'
+                ? 'bg-white text-[#18231E] shadow-xs'
+                : 'text-[#718078] hover:text-[#18231E]'
+            }`}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span>Create Account</span>
+          </button>
+        </div>
 
-          <Input
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            required
-            rightIcon={
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-slate-400 hover:text-slate-600 focus:outline-none"
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            }
-          />
+        {authMode === 'login' ? (
+          /* Sign In Form */
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <Input
+              label="Email Address"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. rahul.sharma@example.com"
+              required
+            />
 
-          {error && <p className="text-xs text-[#D9534F] font-semibold">{error}</p>}
+            <Input
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+              rightIcon={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              }
+            />
 
-          <Button type="submit" variant="primary" className="w-full" isLoading={isLoading}>
-            Sign In to My Society
-          </Button>
-        </form>
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-[#D9534F] font-semibold">
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" variant="primary" className="w-full" isLoading={isLoading}>
+              Sign In to My Society
+            </Button>
+          </form>
+        ) : (
+          /* Registration Form */
+          <form onSubmit={handleRegisterSubmit} className="space-y-4">
+            <Input
+              label="Full Name"
+              type="text"
+              value={registerName}
+              onChange={(e) => setRegisterName(e.target.value)}
+              placeholder="e.g. Rahul Sharma"
+              required
+            />
+
+            <Input
+              label="Email Address"
+              type="email"
+              value={registerEmail}
+              onChange={(e) => setRegisterEmail(e.target.value)}
+              placeholder="e.g. rahul@example.com"
+              required
+            />
+
+            <Input
+              label="Phone Number (Optional)"
+              type="tel"
+              value={registerPhone}
+              onChange={(e) => setRegisterPhone(e.target.value)}
+              placeholder="e.g. +91 98765 43210"
+            />
+
+            <Input
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={registerPassword}
+              onChange={(e) => setRegisterPassword(e.target.value)}
+              placeholder="Choose a strong password (min 6 characters)"
+              required
+              rightIcon={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              }
+            />
+
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-[#D9534F] font-semibold">
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" variant="primary" className="w-full" isLoading={isLoading}>
+              Create Account & Continue
+            </Button>
+          </form>
+        )}
 
         {/* Create or Join Society link */}
         <div className="mt-4 pt-4 border-t border-[#E6ECE8] text-center">
           <p className="text-xs text-[#718078]">
-            New society or resident?{' '}
+            Already set up or have an invite code?{' '}
             <button
               onClick={() => navigate('/society-setup')}
               className="font-bold text-[#23865B] hover:underline focus:outline-none"
             >
-              Create or Join a Society
+              Set up or Join a Society
             </button>
           </p>
         </div>
@@ -133,9 +291,9 @@ export const WelcomePage: React.FC = () => {
         <div className="mt-6 pt-5 border-t border-[#E6ECE8] bg-[#F8FAF9] -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 p-5 sm:p-6 rounded-b-2xl">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-[#23865B]" /> Instant Demo Mode (Phase 1 Prototype)
+              <Sparkles className="h-3.5 w-3.5 text-[#23865B]" /> Instant Demo Mode (Evaluator Sandbox)
             </span>
-            <span className="text-[10px] text-slate-400">Simulated state</span>
+            <span className="text-[10px] text-slate-400">Pre-seeded demo</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

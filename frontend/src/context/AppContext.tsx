@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import {
   UserProfile,
   UserRole,
@@ -8,6 +8,9 @@ import {
   ChatMessage,
   ResidentBill,
   ActivityNotification,
+  UserSocietyPair,
+  ApiSociety,
+  ApiMembership,
 } from '../types';
 import {
   mockSociety,
@@ -20,12 +23,43 @@ import {
   mockResidentBill,
   mockNotifications,
 } from '../data/mockData';
+import { api, getAuthToken, setAuthToken } from '../services/api';
 
 interface AppContextType {
+  // Auth & Identity
+  user: { id: string; name: string; email: string; phone?: string } | null;
+  isAuthenticated: boolean;
+  isLoadingSession: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, password: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
+
+  // Societies & Memberships
+  userSocieties: UserSocietyPair[];
+  activeSocietyPair: UserSocietyPair | null;
+  setActiveSocietyId: (societyId: string) => void;
+  createSociety: (data: {
+    name: string;
+    address: string;
+    city: string;
+    state?: string;
+    country?: string;
+    total_flats?: number;
+    creator_flat_number: string;
+  }) => Promise<{ success: boolean; society?: ApiSociety; membership?: ApiMembership; error?: string }>;
+  joinSociety: (data: {
+    invite_code: string;
+    flat_number: string;
+  }) => Promise<{ success: boolean; society?: ApiSociety; membership?: ApiMembership; error?: string }>;
+
+  // Current profile & roles
   currentUser: UserProfile;
   currentRole: UserRole;
   switchRole: (role: UserRole) => void;
   society: Society;
+
+  // Grocery rounds & chat
   activeRound: OrderRound;
   pastRounds: OrderRound[];
   closeActiveRound: () => void;
@@ -42,20 +76,190 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 /**
- * Global application state provider for Phase 1 demo mode.
- * Allows seamless switching between Resident and Volunteer roles.
+ * Global application state provider managing real authentication,
+ * active apartment society memberships, and grocery ordering state.
  */
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Real backend auth & membership states
+  const [user, setUser] = useState<{ id: string; name: string; email: string; phone?: string } | null>(null);
+  const [userSocieties, setUserSocieties] = useState<UserSocietyPair[]>([]);
+  const [activeSocietyPair, setActiveSocietyPair] = useState<UserSocietyPair | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
+
+  // Application view/role state
   const [currentRole, setCurrentRole] = useState<UserRole>('resident');
   const [activeRound, setActiveRound] = useState<OrderRound>(mockActiveRound);
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>(mockGroceryItems);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
   const [notifications, setNotifications] = useState<ActivityNotification[]>(mockNotifications);
 
-  // Set user profile based on active role
-  const currentUser = useMemo(() => {
+  const isAuthenticated = useMemo(() => !!user, [user]);
+
+  /**
+   * Refreshes the user's active session, societies, and memberships.
+   */
+  const refreshSession = async () => {
+    try {
+      const data = await api.auth.getMe();
+      setUser(data.user);
+      const societies = data.societies || [];
+      setUserSocieties(societies);
+
+      if (societies.length > 0) {
+        const savedSocietyId = localStorage.getItem('society_cart_active_society_id');
+        const matched = societies.find((item: UserSocietyPair) => item.society.id === savedSocietyId);
+        const chosen = matched || societies[0];
+        setActiveSocietyPair(chosen);
+        setCurrentRole(chosen.membership.role);
+      } else {
+        setActiveSocietyPair(null);
+      }
+    } catch {
+      setUser(null);
+      setUserSocieties([]);
+      setActiveSocietyPair(null);
+      setAuthToken(null);
+    }
+  };
+
+  // Restore authenticated session on mount
+  useEffect(() => {
+    const initSession = async () => {
+      const token = getAuthToken();
+      if (token) {
+        await refreshSession();
+      }
+      setIsLoadingSession(false);
+    };
+
+    initSession();
+  }, []);
+
+  /**
+   * Switch the active society when the user belongs to multiple societies.
+   */
+  const setActiveSocietyId = (societyId: string) => {
+    const matched = userSocieties.find((pair) => pair.society.id === societyId);
+    if (matched) {
+      setActiveSocietyPair(matched);
+      setCurrentRole(matched.membership.role);
+      localStorage.setItem('society_cart_active_society_id', societyId);
+    }
+  };
+
+  /**
+   * Log into account via email & password.
+   */
+  const login = async (email: string, password: string) => {
+    try {
+      const res = await api.auth.login({ email, password });
+      setAuthToken(res.access_token);
+      await refreshSession();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Login failed' };
+    }
+  };
+
+  /**
+   * Register a new user account.
+   */
+  const register = async (name: string, email: string, password: string, phone?: string) => {
+    try {
+      const res = await api.auth.register({ name, email, password, phone });
+      setAuthToken(res.access_token);
+      await refreshSession();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Registration failed' };
+    }
+  };
+
+  /**
+   * Log out of current session.
+   */
+  const logout = async () => {
+    try {
+      await api.auth.logout();
+    } catch {
+      // Ignore network errors on logout
+    }
+    setAuthToken(null);
+    setUser(null);
+    setUserSocieties([]);
+    setActiveSocietyPair(null);
+    setCurrentRole('resident');
+    localStorage.removeItem('society_cart_active_society_id');
+  };
+
+  /**
+   * Create an apartment society (assigns creator as Admin).
+   */
+  const createSociety = async (data: {
+    name: string;
+    address: string;
+    city: string;
+    state?: string;
+    country?: string;
+    total_flats?: number;
+    creator_flat_number: string;
+  }) => {
+    try {
+      const res = await api.societies.create(data);
+      await refreshSession();
+      return { success: true, society: res.society, membership: res.membership };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to create society' };
+    }
+  };
+
+  /**
+   * Join an apartment society with an invite code and flat number.
+   */
+  const joinSociety = async (data: { invite_code: string; flat_number: string }) => {
+    try {
+      const res = await api.societies.join(data);
+      await refreshSession();
+      return { success: true, society: res.society, membership: res.membership };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to join society' };
+    }
+  };
+
+  // Derive current user profile from real user + membership when authenticated, or mock when demo
+  const currentUser: UserProfile = useMemo(() => {
+    if (user && activeSocietyPair) {
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        flatNumber: activeSocietyPair.membership.flat_number,
+        societyId: activeSocietyPair.society.id,
+        societyName: activeSocietyPair.society.name,
+        role: currentRole,
+        avatarUrl: undefined,
+      };
+    }
+    // Fallback for instant demo browsing
     return currentRole === 'resident' ? mockResidentUser : mockVolunteerUser;
-  }, [currentRole]);
+  }, [user, activeSocietyPair, currentRole]);
+
+  // Derive society data
+  const society: Society = useMemo(() => {
+    if (activeSocietyPair) {
+      return {
+        id: activeSocietyPair.society.id,
+        name: activeSocietyPair.society.name,
+        locality: activeSocietyPair.society.address,
+        city: activeSocietyPair.society.city,
+        totalFlats: activeSocietyPair.society.total_flats || 100,
+        inviteCode: activeSocietyPair.society.invite_code,
+        activeRoundId: 'round_012',
+      };
+    }
+    return mockSociety;
+  }, [activeSocietyPair]);
 
   const switchRole = (newRole: UserRole) => {
     setCurrentRole(newRole);
@@ -94,8 +298,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setChatMessages((prev) => [...prev, newMsg]);
 
-    // If a resident submitted an order message, simulate an AI bot confirmation response after a short delay
-    if (currentUser.role === 'resident' && text.toLowerCase().includes('kg') || text.toLowerCase().includes('litre') || text.toLowerCase().includes('packet')) {
+    // Simulated assistant feedback for demonstration
+    if (
+      currentUser.role === 'resident' &&
+      (text.toLowerCase().includes('kg') ||
+        text.toLowerCase().includes('litre') ||
+        text.toLowerCase().includes('packet'))
+    ) {
       setTimeout(() => {
         const botMsg: ChatMessage = {
           id: `bot_${Date.now()}`,
@@ -125,10 +334,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        user,
+        isAuthenticated,
+        isLoadingSession,
+        login,
+        register,
+        logout,
+        refreshSession,
+        userSocieties,
+        activeSocietyPair,
+        setActiveSocietyId,
+        createSociety,
+        joinSociety,
         currentUser,
         currentRole,
         switchRole,
-        society: mockSociety,
+        society,
         activeRound,
         pastRounds: mockPastRounds,
         closeActiveRound,
