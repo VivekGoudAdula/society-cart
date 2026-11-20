@@ -294,6 +294,7 @@ export interface ApiConsolidatedItem {
   contributing_flats: ApiContributingFlat[];
   contributing_flats_count: number;
   original_names: string[];
+  has_unspecified_quantity?: boolean;
   is_purchased?: boolean;
 }
 
@@ -357,6 +358,7 @@ export interface ApiCompiledShoppingList {
   shopping_date?: string | null;
   version: number;
   compiled_at: string;
+  source_snapshot_at?: string | null;
   compiled_by_user_id: string;
   summary: ApiShoppingListSummary;
   categories: ApiCategoryGroup[];

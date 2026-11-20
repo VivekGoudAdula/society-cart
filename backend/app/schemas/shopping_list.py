@@ -31,6 +31,7 @@ class ConsolidatedItem(BaseModel):
     contributing_flats: List[ContributingFlat] = Field(default_factory=list, description="Flats requesting this item")
     contributing_flats_count: int = Field(0, description="Number of distinct flats requesting this item")
     original_names: List[str] = Field(default_factory=list, description="Original item descriptions for traceability")
+    has_unspecified_quantity: bool = Field(False, description="Whether any contributing flat had unspecified quantity")
     is_purchased: bool = Field(False, description="Whether volunteer marked this item as purchased")
 
 
@@ -105,6 +106,7 @@ class CompiledShoppingListResponse(BaseModel):
     shopping_date: Optional[str] = Field(None, description="Expected shop visit date")
     version: int = Field(1, description="Compilation version incremented on each recompile")
     compiled_at: datetime = Field(..., description="Compilation timestamp")
+    source_snapshot_at: Optional[datetime] = Field(None, description="Timestamp of the source orders snapshot used for compilation")
     compiled_by_user_id: str = Field(..., description="Volunteer/admin user ID who compiled the list")
     summary: ShoppingListSummary = Field(..., description="High-level summary statistics")
     categories: List[CategoryGroup] = Field(default_factory=list, description="Consolidated items by category")

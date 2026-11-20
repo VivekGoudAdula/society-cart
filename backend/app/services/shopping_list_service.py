@@ -176,12 +176,15 @@ async def compile_shopping_list(
     round_title = round_doc.get("title", f"Grocery Round #{round_number}")
     shopping_date = str(round_doc.get("shopping_date", ""))
 
-    # 2. Fetch all orders for this society round
+    # 2. Fetch all orders for this society round with captured read snapshot timestamp
+    read_snapshot_at = datetime.now(timezone.utc)
     orders_col = get_grocery_orders_collection()
     cursor = orders_col.find({"society_id": society_id, "round_id": round_id})
     all_orders = await cursor.to_list(length=1000)
 
-    # 3. Partition orders by eligibility
+    # 3. Partition orders by eligibility & prevent duplicate source orders
+    seen_order_ids = set()
+    seen_sub_ids = set()
     confirmed_orders: List[Dict[str, Any]] = []
     unresolved_orders_list: List[UnresolvedOrderInfo] = []
     rejected_count = 0
@@ -189,6 +192,14 @@ async def compile_shopping_list(
     for order in all_orders:
         st = order.get("status", "processing")
         if st == "confirmed":
+            oid = str(order["_id"])
+            sub_id = str(order.get("submission_id", ""))
+            # Strict duplicate order protection
+            if oid in seen_order_ids or (sub_id and sub_id in seen_sub_ids):
+                continue
+            seen_order_ids.add(oid)
+            if sub_id:
+                seen_sub_ids.add(sub_id)
             confirmed_orders.append(order)
         elif st in ("pending_review", "awaiting_confirmation", "needs_clarification", "processing", "failed"):
             unresolved_orders_list.append(
@@ -242,6 +253,7 @@ async def compile_shopping_list(
                 category = "other"
 
             norm_qty, norm_unit = normalize_unit_and_quantity(raw_qty, raw_unit)
+            has_unspecified = (norm_qty is None)
 
             # Flat-wise packing item
             flat_packing_map[flat_number]["items"].append(
@@ -289,6 +301,7 @@ async def compile_shopping_list(
                         )
                     ],
                     "original_names": {orig_name},
+                    "has_unspecified_quantity": has_unspecified,
                 }
             else:
                 aggregated_items_map[agg_key]["total_quantity"] += add_qty
@@ -296,6 +309,8 @@ async def compile_shopping_list(
                     aggregated_items_map[agg_key]["total_quantity"], 3
                 )
                 aggregated_items_map[agg_key]["original_names"].add(orig_name)
+                if has_unspecified:
+                    aggregated_items_map[agg_key]["has_unspecified_quantity"] = True
                 aggregated_items_map[agg_key]["contributing_flats"].append(
                     ContributingFlat(
                         flat_number=flat_number,
@@ -323,6 +338,7 @@ async def compile_shopping_list(
             contributing_flats=item_data["contributing_flats"],
             contributing_flats_count=len(set(cf.flat_number for cf in item_data["contributing_flats"])),
             original_names=sorted(list(item_data["original_names"])),
+            has_unspecified_quantity=item_data["has_unspecified_quantity"],
             is_purchased=False,
         )
         cat = item_data["category"]
@@ -380,7 +396,7 @@ async def compile_shopping_list(
     now = datetime.now(timezone.utc)
     shopping_lists_col = get_shopping_lists_collection()
 
-    # 8. Atomic Upsert with compilation versioning
+    # 8. Safe Snapshot Concurrency Control & Versioning
     # Recompilation always calculates from fresh source confirmed orders
     upsert_doc = {
         "society_id": society_id,
@@ -389,6 +405,7 @@ async def compile_shopping_list(
         "round_title": round_title,
         "shopping_date": shopping_date,
         "compiled_at": now,
+        "source_snapshot_at": read_snapshot_at,
         "compiled_by_user_id": user_id,
         "summary": summary.model_dump(),
         "categories": [cg.model_dump() for cg in category_groups],
@@ -398,18 +415,63 @@ async def compile_shopping_list(
         "updated_at": now,
     }
 
-    persisted = await shopping_lists_col.find_one_and_update(
-        {"society_id": society_id, "round_id": round_id},
-        {
-            "$set": upsert_doc,
-            "$inc": {"version": 1},
-            "$setOnInsert": {"created_at": now},
-        },
-        upsert=True,
-        return_document=ReturnDocument.AFTER,
-    )
+    # Optimistic concurrency check against source snapshot
+    existing = await shopping_lists_col.find_one({"society_id": society_id, "round_id": round_id})
+    if not existing:
+        try:
+            init_doc = {
+                **upsert_doc,
+                "version": 1,
+                "created_at": now,
+            }
+            res = await shopping_lists_col.insert_one(init_doc)
+            init_doc["_id"] = res.inserted_id
+            return _serialize_shopping_list(init_doc)
+        except Exception:
+            # Another concurrent compilation inserted first
+            existing = await shopping_lists_col.find_one({"society_id": society_id, "round_id": round_id})
 
-    return _serialize_shopping_list(persisted)
+    if existing:
+        existing_snapshot = existing.get("source_snapshot_at")
+        if existing_snapshot:
+            # Ensure timezone comparability
+            if existing_snapshot.tzinfo is None:
+                existing_snapshot = existing_snapshot.replace(tzinfo=timezone.utc)
+            # If a newer compilation already saved, discard this stale compilation
+            if existing_snapshot > read_snapshot_at:
+                logger.warning(
+                    "Stale compilation snapshot for round %s (read at %s) superseded by newer compilation at %s. Discarding stale write.",
+                    round_id,
+                    read_snapshot_at,
+                    existing_snapshot,
+                )
+                return _serialize_shopping_list(existing)
+
+        # Atomic compare-and-swap: ensure source_snapshot_at has not advanced past our read_snapshot_at
+        persisted = await shopping_lists_col.find_one_and_update(
+            {
+                "_id": existing["_id"],
+                "$or": [
+                    {"source_snapshot_at": {"$lte": read_snapshot_at}},
+                    {"source_snapshot_at": None},
+                ],
+            },
+            {
+                "$set": upsert_doc,
+                "$inc": {"version": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if not persisted:
+            logger.warning(
+                "Concurrent compilation race detected for round %s. Stale write rejected.",
+                round_id,
+            )
+            latest = await shopping_lists_col.find_one({"_id": existing["_id"]})
+            return _serialize_shopping_list(latest or existing)
+        return _serialize_shopping_list(persisted)
+
+    return _serialize_shopping_list(upsert_doc)
 
 
 async def get_shopping_list(
@@ -507,12 +569,17 @@ def export_shopping_list_csv(
         for cg in shopping_list.categories:
             for item in cg.items:
                 flats_str = ", ".join(sorted(set(cf.flat_number for cf in item.contributing_flats)))
+                qty_val = (
+                    "Unspecified"
+                    if (item.has_unspecified_quantity and item.total_quantity == 0)
+                    else str(item.total_quantity)
+                )
                 writer.writerow([
                     cg.category_name,
                     item.normalized_name,
                     item.brand or "",
                     item.variant or "",
-                    item.total_quantity,
+                    qty_val,
                     item.unit,
                     item.contributing_flats_count,
                     flats_str,
@@ -548,7 +615,7 @@ def _serialize_shopping_list(doc: Dict[str, Any]) -> CompiledShoppingListRespons
     ]
 
     return CompiledShoppingListResponse(
-        id=str(doc["_id"]),
+        id=str(doc.get("_id", "")),
         society_id=str(doc["society_id"]),
         round_id=str(doc["round_id"]),
         round_number=int(doc.get("round_number", 1)),
@@ -556,6 +623,7 @@ def _serialize_shopping_list(doc: Dict[str, Any]) -> CompiledShoppingListRespons
         shopping_date=doc.get("shopping_date"),
         version=int(doc.get("version", 1)),
         compiled_at=_ensure_utc(doc.get("compiled_at")),
+        source_snapshot_at=_ensure_utc(doc.get("source_snapshot_at")) if doc.get("source_snapshot_at") else None,
         compiled_by_user_id=str(doc.get("compiled_by_user_id", "")),
         summary=summary,
         categories=categories,

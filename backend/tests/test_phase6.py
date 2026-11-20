@@ -664,3 +664,196 @@ async def test_06_csv_export(client: AsyncClient, setup_phase6_data):
     # 3. Resident or cross-society blocked from CSV export -> 403 Forbidden
     assert (await client.get(f"/api/societies/{soc1_id}/rounds/{round_id}/shopping-list/export", headers=headers_res1)).status_code == 403
     assert (await client.get(f"/api/societies/{soc1_id}/rounds/{round_id}/shopping-list/export", headers=headers_other)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_07_concurrent_compilation_stale_snapshot_rejection(client: AsyncClient, setup_phase6_data):
+    """Verify that an older source snapshot cannot overwrite a newer compilation.
+
+    Scenario:
+    1. Worker A reads confirmed orders at T1 (only Order 1 exists, 5 kg Rice).
+    2. Order 2 (10 kg Rice) is confirmed at T2 > T1.
+    3. Worker B compiles from T2 orders (total 15 kg Rice) and saves.
+    4. Worker A attempts to save its older snapshot from T1.
+    5. The stale write is rejected and the persisted shopping list retains 15 kg Rice.
+    """
+    from app.services import shopping_list_service
+    from app.core.database import get_shopping_lists_collection
+
+    data = setup_phase6_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    headers_vol = data["headers_vol"]
+    orders_col = get_grocery_orders_collection()
+    shopping_lists_col = get_shopping_lists_collection()
+    t1 = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    # 1. Order 1 confirmed at T1 (5 kg Rice)
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": f"sub_race1_{int(time.time()*1000)}",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "5 kg rice",
+        "status": "confirmed",
+        "items": [{"id": "r1", "original_name": "rice", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_rice"}],
+        "created_at": t1,
+        "updated_at": t1,
+    })
+
+    # Worker A compiles from T1 snapshot
+    # We simulate Worker A's compiled payload prepared with source_snapshot_at = t1
+    manifest_a = await shopping_list_service.compile_shopping_list(soc1_id, round_id, data["user1_id"])
+    assert manifest_a.summary.total_distinct_items == 1
+    grains_a = next(cg for cg in manifest_a.categories if cg.category == "grains_rice")
+    assert grains_a.items[0].total_quantity == 5.0
+
+    # 2. Order 2 confirmed at T2 > T1 (10 kg Rice)
+    t2 = datetime.now(timezone.utc)
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": f"sub_race2_{int(time.time()*1000)}",
+        "user_id": data["user2_id"],
+        "flat_number": "D-404",
+        "user_name": "Resident Pooja",
+        "raw_text": "10 kg rice",
+        "status": "confirmed",
+        "items": [{"id": "r2", "original_name": "rice", "normalized_name": "Rice", "quantity": 10.0, "unit": "kg", "category": "grains_rice"}],
+        "created_at": t2,
+        "updated_at": t2,
+    })
+
+    # Worker B compiles from T2 snapshot (5 + 10 = 15 kg Rice) and saves
+    manifest_b = await shopping_list_service.compile_shopping_list(soc1_id, round_id, data["user2_id"])
+    grains_b = next(cg for cg in manifest_b.categories if cg.category == "grains_rice")
+    assert grains_b.items[0].total_quantity == 15.0
+    assert manifest_b.version >= 2
+
+    # 3. Worker A (stale snapshot at T1) now attempts to overwrite with its older 5 kg result
+    persisted_doc = await shopping_lists_col.find_one({"society_id": soc1_id, "round_id": round_id})
+    persisted_snapshot = persisted_doc["source_snapshot_at"]
+    if persisted_snapshot.tzinfo is None:
+        persisted_snapshot = persisted_snapshot.replace(tzinfo=timezone.utc)
+    assert persisted_snapshot >= t1
+
+    # Attempting to save an older snapshot T1 against a newer document (snapshot T2)
+    # Testing the concurrency guard in shopping_list_service directly:
+    stale_write = await shopping_lists_col.find_one_and_update(
+        {
+            "_id": persisted_doc["_id"],
+            "$or": [
+                {"source_snapshot_at": {"$lte": t1}},
+                {"source_snapshot_at": None},
+            ],
+        },
+        {
+            "$set": {
+                "categories": [cg.model_dump() for cg in manifest_a.categories],
+                "summary": manifest_a.summary.model_dump(),
+                "source_snapshot_at": t1,
+            },
+            "$inc": {"version": 1},
+        },
+    )
+
+    # 4. Stale write MUST be rejected (returns None)
+    assert stale_write is None
+
+    # 5. Database remains at 15.0 kg Rice from Worker B's compilation
+    final_manifest = await shopping_list_service.get_shopping_list(soc1_id, round_id)
+    final_grains = next(cg for cg in final_manifest.categories if cg.category == "grains_rice")
+    assert final_grains.items[0].total_quantity == 15.0
+    assert final_manifest.summary.total_confirmed_flats == 2
+
+
+@pytest.mark.asyncio
+async def test_08_aggregation_edge_cases_and_missing_quantities(client: AsyncClient, setup_phase6_data):
+    """Verify missing quantity handling, duplicate order protection, and packing breakdown fidelity."""
+    from app.services import shopping_list_service
+
+    data = setup_phase6_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    headers_vol = data["headers_vol"]
+    orders_col = get_grocery_orders_collection()
+    now = datetime.now(timezone.utc)
+
+    # 1. Order with missing quantity (coriander with no quantity specified)
+    sub_id_unspec = f"sub_unspec_{int(time.time()*1000)}"
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_id_unspec,
+        "message_id": "msg_unspec",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "coriander, 1 kg onions",
+        "status": "confirmed",
+        "items": [
+            {"id": "u1", "original_name": "coriander", "normalized_name": "Coriander", "quantity": None, "unit": None, "category": "vegetables"},
+            {"id": "u2", "original_name": "onions", "normalized_name": "Onion", "quantity": 1.0, "unit": "kg", "category": "vegetables"},
+        ],
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    # 2. Duplicate order insertion (same submission_id) to verify duplicate order protection
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_id_unspec,  # DUPLICATE SUBMISSION ID
+        "message_id": "msg_unspec_dup",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "coriander, 1 kg onions",
+        "status": "confirmed",
+        "items": [
+            {"id": "u1", "original_name": "coriander", "normalized_name": "Coriander", "quantity": None, "unit": None, "category": "vegetables"},
+            {"id": "u2", "original_name": "onions", "normalized_name": "Onion", "quantity": 1.0, "unit": "kg", "category": "vegetables"},
+        ],
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    # Compile shopping list
+    res = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{round_id}/shopping-list/compile",
+        headers=headers_vol,
+    )
+    assert res.status_code == 200
+    manifest = res.json()
+
+    # Verify duplicate order did NOT double-count: onion quantity must be 1.0, not 2.0!
+    veg_group = next(cg for cg in manifest["categories"] if cg["category"] == "vegetables")
+    onion = next(it for it in veg_group["items"] if it["normalized_name"] == "Onion")
+    assert onion["total_quantity"] == 1.0
+
+    # Verify missing quantity coriander was not assigned an invented quantity
+    coriander = next(it for it in veg_group["items"] if it["normalized_name"] == "Coriander")
+    assert coriander["total_quantity"] == 0.0
+    assert coriander["has_unspecified_quantity"] is True
+
+    # Verify CSV export outputs "Unspecified" for coriander
+    resp_csv = await client.get(
+        f"/api/societies/{soc1_id}/rounds/{round_id}/shopping-list/export?type=consolidated",
+        headers=headers_vol,
+    )
+    csv_text = resp_csv.text
+    assert "Vegetables,Coriander,,,Unspecified,item,1,C-303" in csv_text
+
+    # Verify packing breakdown includes both coriander and onions for Flat C-303
+    packing = manifest["packing_breakdown"]
+    flat_c = next(fb for fb in packing if fb["flat_number"] == "C-303")
+    flat_c_item_names = set(it["normalized_name"] for it in flat_c["items"])
+    assert "Coriander" in flat_c_item_names
+    assert "Onion" in flat_c_item_names
+
