@@ -938,6 +938,7 @@ async def test_09_recovery_concurrency_and_lease_ownership(setup_phase5_data):
             "_id": preempt_id,
             "status": "processing",
             "processing_lease_id": "worker_A_stale_lease",
+            "processing_lease_until": {"$gt": datetime.now(timezone.utc)},
         },
         {
             "$set": {
@@ -983,5 +984,165 @@ async def test_09_recovery_concurrency_and_lease_ownership(setup_phase5_data):
         term_doc = await orders_col.find_one({"status": term_status, "raw_text": "5 kg rice"})
         assert term_doc is not None
         assert term_doc["status"] == term_status
+
+
+@pytest.mark.asyncio
+async def test_10_lease_expiration_unclaimed_late_commit_rejection(setup_phase5_data):
+    """Verify that an expired lease cannot commit even if no replacement worker has claimed the order yet.
+
+    Flow:
+    1. Worker A acquires a lease on an order in 'processing'.
+    2. Lease expires (processing_lease_until < current_utc_time), but Worker B has NOT claimed it yet.
+    3. Worker A attempts to commit extraction results using its still-recorded lease_id.
+    4. Because processing_lease_until <= now, the commit is atomically rejected (returns None).
+    5. The order remains untouched in 'processing' status with empty items.
+    6. Worker B acquires the expired lease.
+    7. Worker B commits its extraction results successfully to 'pending_review'.
+    8. Stale Worker A attempts to commit again; commit is rejected; Worker B's results are intact.
+    """
+    from pymongo import ReturnDocument
+    from app.core.database import get_grocery_orders_collection
+
+    data = setup_phase5_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    orders_col = get_grocery_orders_collection()
+    now = datetime.now(timezone.utc)
+
+    sub_id = f"sub_lease_exp_{int(time.time()*1000)}"
+    lease_a = "worker_A_lease_token_123"
+
+    # 1. Order is in processing, Worker A acquired a lease that expired 2 minutes ago
+    expired_time = now - timedelta(minutes=2)
+    order_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_id,
+        "message_id": "msg_lease_exp",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "2 kg carrots",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "created_at": now - timedelta(minutes=10),
+        "updated_at": now - timedelta(minutes=10),
+        "recovery_attempts": 0,
+        "processing_lease_id": lease_a,
+        "processing_lease_until": expired_time,
+    }
+    inserted = await orders_col.insert_one(order_doc)
+    order_id = inserted.inserted_id
+
+    # 2. Worker B has NOT claimed the order yet.
+    # Notice: processing_lease_id is STILL lease_a in MongoDB!
+    current_doc = await orders_col.find_one({"_id": order_id})
+    assert current_doc["processing_lease_id"] == lease_a
+    assert current_doc["status"] == "processing"
+
+    # 3. Worker A attempts to commit extraction results using lease_a and the hardened query
+    commit_time = datetime.now(timezone.utc)
+    worker_a_commit = await orders_col.find_one_and_update(
+        {
+            "_id": order_id,
+            "status": "processing",
+            "processing_lease_id": lease_a,
+            "processing_lease_until": {"$gt": commit_time},
+        },
+        {
+            "$set": {
+                "items": [{"id": "item_a", "original_name": "carrots", "normalized_name": "Carrot (Worker A Late)", "quantity": 2.0, "unit": "kg", "category": "vegetables", "confidence": 0.9}],
+                "status": "pending_review",
+                "processing_lease_id": None,
+                "processing_lease_until": None,
+                "updated_at": commit_time,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+
+    # 4. Commit MUST be rejected because lease expired, even though lease_a was still on document!
+    assert worker_a_commit is None
+
+    # 5. Verify the order document remains completely unchanged in 'processing' state with empty items
+    order_after_failed_commit = await orders_col.find_one({"_id": order_id})
+    assert order_after_failed_commit["status"] == "processing"
+    assert order_after_failed_commit["items"] == []
+    assert order_after_failed_commit["processing_lease_id"] == lease_a
+
+    # 6. Worker B acquires the expired lease
+    lease_b = "worker_B_lease_token_456"
+    worker_b_claim_time = datetime.now(timezone.utc)
+    worker_b_lease_until = worker_b_claim_time + timedelta(seconds=120)
+
+    worker_b_claimed = await orders_col.find_one_and_update(
+        {
+            "_id": order_id,
+            "status": "processing",
+            "$or": [
+                {"processing_lease_until": {"$lte": worker_b_claim_time}},
+                {"processing_lease_until": None},
+            ],
+        },
+        {
+            "$inc": {"recovery_attempts": 1},
+            "$set": {
+                "processing_lease_id": lease_b,
+                "processing_lease_until": worker_b_lease_until,
+                "updated_at": worker_b_claim_time,
+            },
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    assert worker_b_claimed is not None
+    assert worker_b_claimed["processing_lease_id"] == lease_b
+
+    # 7. Worker B commits its extraction results successfully
+    worker_b_commit_time = datetime.now(timezone.utc)
+    worker_b_commit = await orders_col.find_one_and_update(
+        {
+            "_id": order_id,
+            "status": "processing",
+            "processing_lease_id": lease_b,
+            "processing_lease_until": {"$gt": worker_b_commit_time},
+        },
+        {
+            "$set": {
+                "items": [{"id": "item_b", "original_name": "carrots", "normalized_name": "Carrot (Worker B Valid)", "quantity": 2.0, "unit": "kg", "category": "vegetables", "confidence": 1.0}],
+                "status": "pending_review",
+                "processing_lease_id": None,
+                "processing_lease_until": None,
+                "updated_at": worker_b_commit_time,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    assert worker_b_commit is not None
+    assert worker_b_commit["status"] == "pending_review"
+    assert worker_b_commit["items"][0]["normalized_name"] == "Carrot (Worker B Valid)"
+
+    # 8. Stale Worker A attempts to commit again; must be rejected and Worker B's result remains intact
+    stale_retry_commit = await orders_col.find_one_and_update(
+        {
+            "_id": order_id,
+            "status": "processing",
+            "processing_lease_id": lease_a,
+            "processing_lease_until": {"$gt": datetime.now(timezone.utc)},
+        },
+        {
+            "$set": {
+                "items": [{"id": "item_a2", "original_name": "carrots", "normalized_name": "Carrot (Worker A Overwrite)", "quantity": 99.0, "unit": "kg", "category": "vegetables", "confidence": 0.1}],
+                "status": "pending_review",
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    assert stale_retry_commit is None
+
+    final_doc = await orders_col.find_one({"_id": order_id})
+    assert final_doc["status"] == "pending_review"
+    assert final_doc["items"][0]["normalized_name"] == "Carrot (Worker B Valid)"
 
 

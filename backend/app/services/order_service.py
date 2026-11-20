@@ -259,11 +259,13 @@ async def trigger_ai_extraction(
     try:
         ai_output: AIExtractionOutput = await groq_service.extract_grocery_items(raw_text)
 
+        commit_time = datetime.now(timezone.utc)
         updated = await orders_col.find_one_and_update(
             {
                 "_id": order_doc["_id"],
                 "status": "processing",
                 "processing_lease_id": current_lease_id,
+                "processing_lease_until": {"$gt": commit_time},
             },
             {
                 "$set": {
@@ -274,7 +276,7 @@ async def trigger_ai_extraction(
                     "error_message": None,
                     "processing_lease_id": None,
                     "processing_lease_until": None,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": commit_time,
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -291,12 +293,14 @@ async def trigger_ai_extraction(
 
     except Exception as ai_exc:
         logger.error("AI extraction error for submission %s: %s", submission_id, ai_exc)
-        # Safe failure update: record failure only if lease is still owned
+        commit_time = datetime.now(timezone.utc)
+        # Safe failure update: record failure only if lease is still owned and unexpired
         failed = await orders_col.find_one_and_update(
             {
                 "_id": order_doc["_id"],
                 "status": "processing",
                 "processing_lease_id": current_lease_id,
+                "processing_lease_until": {"$gt": commit_time},
             },
             {
                 "$set": {
@@ -304,7 +308,7 @@ async def trigger_ai_extraction(
                     "error_message": str(ai_exc),
                     "processing_lease_id": None,
                     "processing_lease_until": None,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": commit_time,
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -411,12 +415,14 @@ async def recover_stale_processing_orders(
             raw_text = claimed.get("raw_text", "")
             ai_output = await groq_service.extract_grocery_items(raw_text)
 
-            # Atomic write-back: verify our recovery lease is still active before writing results
+            # Atomic write-back: verify our recovery lease is still active and unexpired before writing results
+            commit_time = datetime.now(timezone.utc)
             updated = await orders_col.find_one_and_update(
                 {
                     "_id": order_id,
                     "status": "processing",
                     "processing_lease_id": recovery_lease_id,
+                    "processing_lease_until": {"$gt": commit_time},
                 },
                 {
                     "$set": {
@@ -427,7 +433,7 @@ async def recover_stale_processing_orders(
                         "error_message": None,
                         "processing_lease_id": None,
                         "processing_lease_until": None,
-                        "updated_at": datetime.now(timezone.utc),
+                        "updated_at": commit_time,
                     }
                 },
                 return_document=ReturnDocument.AFTER,
@@ -443,12 +449,14 @@ async def recover_stale_processing_orders(
                 )
         except Exception as exc:
             logger.error("Failed to recover stale order %s: %s", order_id, exc)
+            commit_time = datetime.now(timezone.utc)
             if attempts + 1 >= max_recovery_attempts:
                 await orders_col.update_one(
                     {
                         "_id": order_id,
                         "status": "processing",
                         "processing_lease_id": recovery_lease_id,
+                        "processing_lease_until": {"$gt": commit_time},
                     },
                     {
                         "$set": {
@@ -456,7 +464,7 @@ async def recover_stale_processing_orders(
                             "error_message": f"Extraction failed during recovery: {exc}",
                             "processing_lease_id": None,
                             "processing_lease_until": None,
-                            "updated_at": datetime.now(timezone.utc),
+                            "updated_at": commit_time,
                         }
                     },
                 )
@@ -467,11 +475,12 @@ async def recover_stale_processing_orders(
                         "_id": order_id,
                         "status": "processing",
                         "processing_lease_id": recovery_lease_id,
+                        "processing_lease_until": {"$gt": commit_time},
                     },
                     {
                         "$set": {
-                            "processing_lease_until": datetime.now(timezone.utc),
-                            "updated_at": datetime.now(timezone.utc),
+                            "processing_lease_until": commit_time,
+                            "updated_at": commit_time,
                         }
                     },
                 )
@@ -535,11 +544,13 @@ async def retry_ai_extraction(
         raw_text = claimed.get("raw_text", "")
         ai_output: AIExtractionOutput = await groq_service.extract_grocery_items(raw_text)
 
+        commit_time = datetime.now(timezone.utc)
         updated = await orders_col.find_one_and_update(
             {
                 "_id": claimed["_id"],
                 "status": "processing",
                 "processing_lease_id": lease_id,
+                "processing_lease_until": {"$gt": commit_time},
             },
             {
                 "$set": {
@@ -550,7 +561,7 @@ async def retry_ai_extraction(
                     "error_message": None,
                     "processing_lease_id": None,
                     "processing_lease_until": None,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": commit_time,
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -562,11 +573,13 @@ async def retry_ai_extraction(
 
     except Exception as exc:
         logger.error("Retry extraction failed for order %s: %s", order_id, exc)
+        commit_time = datetime.now(timezone.utc)
         failed = await orders_col.find_one_and_update(
             {
                 "_id": claimed["_id"],
                 "status": "processing",
                 "processing_lease_id": lease_id,
+                "processing_lease_until": {"$gt": commit_time},
             },
             {
                 "$set": {
@@ -574,7 +587,7 @@ async def retry_ai_extraction(
                     "error_message": str(exc),
                     "processing_lease_id": None,
                     "processing_lease_until": None,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": commit_time,
                 }
             },
             return_document=ReturnDocument.AFTER,
