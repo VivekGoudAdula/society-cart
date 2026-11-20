@@ -22,7 +22,7 @@ import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
 import { OrderReviewModal } from '../components/orders/OrderReviewModal';
-import { ApiGroceryOrder } from '../types';
+import { ApiGroceryOrder, ApiGroceryBill } from '../types';
 import { api } from '../services/api';
 
 /**
@@ -34,12 +34,18 @@ export const ResidentDashboard: React.FC = () => {
 
   const [orders, setOrders] = useState<ApiGroceryOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<ApiGroceryOrder | null>(null);
+  const [myBills, setMyBills] = useState<ApiGroceryBill[]>([]);
 
   useEffect(() => {
     if (!society?.id || !activeRound?.id) return;
     api.orders
       .listByRound(society.id, activeRound.id)
       .then((res) => setOrders(res))
+      .catch(() => {});
+
+    api.billing
+      .getMyBills()
+      .then((res) => setMyBills(res))
       .catch(() => {});
   }, [society?.id, activeRound?.id]);
 
@@ -215,6 +221,46 @@ export const ResidentDashboard: React.FC = () => {
                   <Button size="sm" variant="outline" leftIcon={<Eye className="w-3.5 h-3.5" />}>
                     Review
                   </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Phase 7: My Grocery Bills */}
+      {myBills.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-[#18231E]">My Grocery Bills & Invoices</h3>
+            <span className="text-xs text-[#718078]">{myBills.length} Invoices</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {myBills.map((b) => (
+              <Card
+                key={b.id}
+                hoverable
+                onClick={() => navigate('/order-summary')}
+                className="p-4 border-emerald-100 bg-white space-y-3 cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#18231E]">Round #{b.round_number}</span>
+                  <Badge variant={b.status === 'published' ? 'success' : 'primary'} size="sm">
+                    {b.status.toUpperCase()}
+                  </Badge>
+                </div>
+
+                <div className="flex items-baseline justify-between pt-1 border-t border-slate-100">
+                  <span className="text-xs text-[#718078]">{b.items.length} items</span>
+                  <span className="text-base font-black text-[#196B48]">
+                    ₹{b.total_amount.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-400 group-hover:text-[#23865B] transition-colors">
+                  <span>View Itemized Receipt</span>
+                  <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
               </Card>
             ))}

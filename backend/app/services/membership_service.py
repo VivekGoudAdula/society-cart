@@ -157,3 +157,35 @@ async def deactivate_membership(
     society_doc = await societies_col.find_one({"_id": society_oid})
     group_id = (society_doc or {}).get("nexconn_group_id") or f"society_{society_id}"
     await remove_resident_from_group(target_mem["user_id"], group_id)
+
+
+async def require_society_role(
+    user_id: str,
+    society_id: str,
+    allowed_roles: List[str],
+) -> Dict[str, Any]:
+    """Verify that a user holds an active membership with one of the allowed roles.
+
+    Args:
+        user_id: User document ID.
+        society_id: Society document ID.
+        allowed_roles: List of permitted roles (e.g. ['admin', 'volunteer']).
+
+    Returns:
+        Dict[str, Any]: Membership document.
+
+    Raises:
+        HTTPException: 403 Forbidden if not member or role not permitted.
+    """
+    membership = await get_active_membership(user_id, society_id)
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not an active member of this apartment society.",
+        )
+    if membership.get("role") not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Volunteer or administrator privileges are required for this action.",
+        )
+    return membership

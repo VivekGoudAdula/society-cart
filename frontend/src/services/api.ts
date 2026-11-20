@@ -10,6 +10,17 @@ import {
   ApiGroceryOrderItem,
   ApiCompiledShoppingList,
   ApiUnresolvedOrderInfo,
+  ApiPurchaseRecord,
+  ApiRecordPurchaseRequest,
+  ApiUpdatePurchaseRequest,
+  ApiAllocationPreviewResponse,
+  ApiFinalizeBillsRequest,
+  ApiGroceryBill,
+  ApiPublishBillsAnnouncementResponse,
+  ApiSocietySpendingSummary,
+  ApiRetailBenchmark,
+  ApiRecordBenchmarkRequest,
+  ApiSocietySavingsSummary,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -341,5 +352,84 @@ export const api = {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     },
+  },
+
+  billing: {
+    recordPurchase: (societyId: string, roundId: string, data: ApiRecordPurchaseRequest) =>
+      request<ApiPurchaseRecord>(
+        `/api/societies/${societyId}/rounds/${roundId}/purchases`,
+        { method: 'POST', body: JSON.stringify(data) }
+      ),
+
+    listPurchases: (societyId: string, roundId: string) =>
+      request<ApiPurchaseRecord[]>(
+        `/api/societies/${societyId}/rounds/${roundId}/purchases`
+      ),
+
+    updatePurchase: (
+      societyId: string,
+      roundId: string,
+      purchaseId: string,
+      data: ApiUpdatePurchaseRequest
+    ) =>
+      request<ApiPurchaseRecord>(
+        `/api/societies/${societyId}/rounds/${roundId}/purchases/${purchaseId}`,
+        { method: 'PATCH', body: JSON.stringify(data) }
+      ),
+
+    deletePurchase: (societyId: string, roundId: string, purchaseId: string) =>
+      request<{ status: string; purchase_id: string }>(
+        `/api/societies/${societyId}/rounds/${roundId}/purchases/${purchaseId}`,
+        { method: 'DELETE' }
+      ),
+
+    getAllocationPreview: (societyId: string, roundId: string) =>
+      request<ApiAllocationPreviewResponse>(
+        `/api/societies/${societyId}/rounds/${roundId}/allocation/preview`
+      ),
+
+    finalizeBills: (societyId: string, roundId: string, data: ApiFinalizeBillsRequest) =>
+      request<ApiGroceryBill[]>(
+        `/api/societies/${societyId}/rounds/${roundId}/bills/finalize`,
+        { method: 'POST', body: JSON.stringify(data) }
+      ),
+
+    getRoundBills: (societyId: string, roundId: string) =>
+      request<ApiGroceryBill[]>(
+        `/api/societies/${societyId}/rounds/${roundId}/bills`
+      ),
+
+    publishAnnouncement: (societyId: string, roundId: string) =>
+      request<ApiPublishBillsAnnouncementResponse>(
+        `/api/societies/${societyId}/rounds/${roundId}/bills/publish`,
+        { method: 'POST' }
+      ),
+
+    getSpendingSummary: (societyId: string, roundId: string) =>
+      request<ApiSocietySpendingSummary>(
+        `/api/societies/${societyId}/rounds/${roundId}/spending-summary`
+      ),
+
+    recordBenchmark: (societyId: string, roundId: string, data: ApiRecordBenchmarkRequest) =>
+      request<ApiRetailBenchmark>(
+        `/api/societies/${societyId}/rounds/${roundId}/benchmarks`,
+        { method: 'POST', body: JSON.stringify(data) }
+      ),
+
+    listBenchmarks: (societyId: string, roundId: string) =>
+      request<ApiRetailBenchmark[]>(
+        `/api/societies/${societyId}/rounds/${roundId}/benchmarks`
+      ),
+
+    getSavingsSummary: (societyId: string, roundId: string) =>
+      request<ApiSocietySavingsSummary>(
+        `/api/societies/${societyId}/rounds/${roundId}/savings`
+      ),
+
+    getMyBills: () =>
+      request<ApiGroceryBill[]>('/api/users/me/bills'),
+
+    getMyBillById: (billId: string) =>
+      request<ApiGroceryBill>(`/api/users/me/bills/${billId}`),
   },
 };

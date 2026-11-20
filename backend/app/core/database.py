@@ -219,6 +219,32 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             unique=True,
             name="idx_shopping_lists_society_round_unique",
         )
+
+        # Purchase Records Collection (Phase 7):
+        await db.purchase_records.create_index(
+            [("society_id", ASCENDING), ("round_id", ASCENDING)],
+            name="idx_purchase_records_society_round",
+        )
+
+        # Grocery Bills Collection (Phase 7):
+        await db.grocery_bills.create_index(
+            [("society_id", ASCENDING), ("round_id", ASCENDING)],
+            name="idx_grocery_bills_society_round",
+        )
+        await db.grocery_bills.create_index(
+            [("round_id", ASCENDING), ("user_id", ASCENDING)],
+            name="idx_grocery_bills_round_user",
+        )
+        await db.grocery_bills.create_index(
+            [("user_id", ASCENDING), ("status", ASCENDING)],
+            name="idx_grocery_bills_user_status",
+        )
+
+        # Retail Benchmarks Collection (Phase 7):
+        await db.retail_benchmarks.create_index(
+            [("society_id", ASCENDING), ("product_name", ASCENDING)],
+            name="idx_retail_benchmarks_society_product",
+        )
     except Exception as exc:
         logger.warning("Database index check: %s", exc)
 
@@ -283,3 +309,18 @@ def get_grocery_orders_collection() -> AsyncCollection:
 def get_shopping_lists_collection() -> AsyncCollection:
     """Return the shopping_lists collection for consolidated volunteer shopping manifests."""
     return get_database().shopping_lists
+
+
+def get_purchase_records_collection() -> AsyncCollection:
+    """Return the purchase_records collection for actual volunteer purchases (Phase 7)."""
+    return get_database().purchase_records
+
+
+def get_grocery_bills_collection() -> AsyncCollection:
+    """Return the grocery_bills collection for per-flat itemized bills (Phase 7)."""
+    return get_database().grocery_bills
+
+
+def get_retail_benchmarks_collection() -> AsyncCollection:
+    """Return the retail_benchmarks collection for verified price evidence (Phase 7)."""
+    return get_database().retail_benchmarks

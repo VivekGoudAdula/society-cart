@@ -30,8 +30,11 @@ import {
   ApiCompiledShoppingList,
   ApiOrderRound,
 } from '../types';
+import { PurchaseRecordingSection } from '../components/billing/PurchaseRecordingSection';
+import { CostAllocationSection } from '../components/billing/CostAllocationSection';
+import { SpendingAndSavingsSection } from '../components/billing/SpendingAndSavingsSection';
 
-type DashboardTab = 'master' | 'packing' | 'unresolved';
+type DashboardTab = 'master' | 'packing' | 'purchases' | 'allocation' | 'spending' | 'unresolved';
 
 export const ShoppingListPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -461,6 +464,39 @@ export const ShoppingListPage: React.FC = () => {
               </button>
 
               <button
+                onClick={() => setActiveTab('purchases')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'purchases'
+                    ? 'bg-[#196B48] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <span>Record Purchases</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('allocation')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'allocation'
+                    ? 'bg-[#196B48] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <span>Cost Allocation & Bills</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('spending')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'spending'
+                    ? 'bg-[#196B48] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <span>Spending & Savings</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('unresolved')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                   activeTab === 'unresolved'
@@ -799,6 +835,31 @@ export const ShoppingListPage: React.FC = () => {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Phase 7: Purchases Tab */}
+          {activeTab === 'purchases' && targetRoundId && societyId && (
+            <PurchaseRecordingSection
+              societyId={societyId}
+              roundId={targetRoundId}
+              onPurchasesChanged={() => {}}
+            />
+          )}
+
+          {/* Phase 7: Cost Allocation & Bills Tab */}
+          {activeTab === 'allocation' && targetRoundId && societyId && (
+            <CostAllocationSection
+              societyId={societyId}
+              roundId={targetRoundId}
+            />
+          )}
+
+          {/* Phase 7: Spending & Verified Savings Tab */}
+          {activeTab === 'spending' && targetRoundId && societyId && (
+            <SpendingAndSavingsSection
+              societyId={societyId}
+              roundId={targetRoundId}
+            />
           )}
         </>
       )}

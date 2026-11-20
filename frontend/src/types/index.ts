@@ -366,3 +366,268 @@ export interface ApiCompiledShoppingList {
   unresolved_orders: ApiUnresolvedOrderInfo[];
 }
 
+// =============================================================================
+// Phase 7 — Billing, Allocations, Benchmarks & Savings Types
+// =============================================================================
+
+export type ApiBillStatus = 'draft' | 'finalized' | 'published' | 'corrected' | 'cancelled';
+
+export interface ApiPurchaseRecord {
+  id: string;
+  society_id: string;
+  round_id: string;
+  item_name: string;
+  normalized_name: string;
+  category: string;
+  brand?: string | null;
+  variant?: string | null;
+  actual_quantity: number;
+  unit: string;
+  total_price: number;
+  unit_price: number;
+  shop_name: string;
+  purchase_date: string;
+  invoice_ref?: string | null;
+  notes?: string | null;
+  is_substitution: boolean;
+  substitute_for_item_name?: string | null;
+  substitute_for_brand?: string | null;
+  substitute_for_variant?: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiRecordPurchaseRequest {
+  item_name: string;
+  category: string;
+  brand?: string | null;
+  variant?: string | null;
+  actual_quantity: number;
+  unit: string;
+  total_price: number;
+  shop_name: string;
+  purchase_date?: string | null;
+  invoice_ref?: string | null;
+  notes?: string | null;
+  is_substitution?: boolean;
+  substitute_for_item_name?: string | null;
+}
+
+export interface ApiUpdatePurchaseRequest {
+  item_name?: string | null;
+  category?: string | null;
+  brand?: string | null;
+  variant?: string | null;
+  actual_quantity?: number | null;
+  unit?: string | null;
+  total_price?: number | null;
+  shop_name?: string | null;
+  invoice_ref?: string | null;
+  notes?: string | null;
+  is_substitution?: boolean | null;
+  substitute_for_item_name?: string | null;
+}
+
+export interface ApiItemAllocationDetail {
+  item_name: string;
+  normalized_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  category: string;
+  requested_quantity: number;
+  allocated_quantity: number;
+  unit: string;
+  unit_price: number;
+  item_total: number;
+  is_substituted: boolean;
+  substitute_notes?: string | null;
+  is_unfulfilled: boolean;
+  unfulfilled_quantity: number;
+}
+
+export interface ApiFlatAllocationPreview {
+  flat_number: string;
+  resident_name: string;
+  user_id: string;
+  order_id: string;
+  items: ApiItemAllocationDetail[];
+  items_subtotal: number;
+  shared_costs_allocated: number;
+  rounding_adjustment: number;
+  final_amount_payable: number;
+}
+
+export interface ApiPurchasedItemMatchingSummary {
+  item_key: string;
+  item_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  category: string;
+  unit: string;
+  requested_quantity: number;
+  purchased_quantity: number;
+  fulfilled_quantity: number;
+  unfulfilled_quantity: number;
+  is_substituted: boolean;
+  substitute_item_name?: string | null;
+  effective_unit_cost: number;
+  total_cost: number;
+}
+
+export interface ApiAllocationPreviewResponse {
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  matching_summaries: ApiPurchasedItemMatchingSummary[];
+  flat_allocations: ApiFlatAllocationPreview[];
+  total_actual_purchase_cost: number;
+  total_allocated_flats_cost: number;
+  total_shared_costs: number;
+  unallocated_cost: number;
+  is_reconciled: boolean;
+  reconciliation_message: string;
+  can_finalize: boolean;
+}
+
+export interface ApiSharedCostEntry {
+  name: string;
+  amount: number;
+  notes?: string | null;
+}
+
+export interface ApiFinalizeBillsRequest {
+  shared_costs?: ApiSharedCostEntry[];
+  rounding_policy?: string;
+}
+
+export interface ApiGroceryBill {
+  id: string;
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  society_name: string;
+  user_id: string;
+  flat_number: string;
+  resident_name: string;
+  order_id: string;
+  status: ApiBillStatus;
+  bill_version: number;
+  items: ApiItemAllocationDetail[];
+  shared_costs: ApiSharedCostEntry[];
+  items_subtotal: number;
+  shared_costs_total: number;
+  rounding_adjustment: number;
+  total_amount: number;
+  is_reconciled: boolean;
+  created_at: string;
+  updated_at: string;
+  finalized_at?: string | null;
+  published_at?: string | null;
+  previous_version_bill_id?: string | null;
+  correction_notes?: string | null;
+}
+
+export interface ApiPublishBillsAnnouncementResponse {
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  group_id: string;
+  message_text: string;
+  sent: boolean;
+  delivery_status: string;
+  attempts: number;
+  published_at: string;
+}
+
+export interface ApiSocietySpendingSummary {
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  total_actual_purchase_cost: number;
+  total_allocated_bill_costs: number;
+  total_shared_costs: number;
+  total_unallocated_cost: number;
+  is_reconciled: boolean;
+  reconciliation_equation: string;
+  total_purchased_items_count: number;
+  total_flats_billed: number;
+  total_finalized_bills: number;
+  total_unfulfilled_items_count: number;
+  total_substituted_items_count: number;
+  unresolved_discrepancies: string[];
+}
+
+export interface ApiRetailBenchmark {
+  id: string;
+  society_id: string;
+  product_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  package_size: number;
+  package_unit: string;
+  benchmark_price: number;
+  benchmark_unit_price: number;
+  store_name: string;
+  source_type: string;
+  evidence_ref?: string | null;
+  evidence_url?: string | null;
+  evidence_date: string;
+  location: string;
+  verification_status: string;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  created_at: string;
+}
+
+export interface ApiRecordBenchmarkRequest {
+  product_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  package_size: number;
+  package_unit: string;
+  benchmark_price: number;
+  store_name: string;
+  source_type: string;
+  evidence_ref?: string | null;
+  evidence_url?: string | null;
+  evidence_date: string;
+  location: string;
+}
+
+export interface ApiItemSavingsDetail {
+  item_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  quantity: number;
+  unit: string;
+  bulk_cost: number;
+  bulk_unit_price: number;
+  has_benchmark: boolean;
+  benchmark_price?: number | null;
+  benchmark_unit_price?: number | null;
+  benchmark_store?: string | null;
+  benchmark_date?: string | null;
+  benchmark_cost?: number | null;
+  savings_amount?: number | null;
+  savings_percentage?: number | null;
+  status_label: string;
+  unavailability_reason?: string | null;
+}
+
+export interface ApiSocietySavingsSummary {
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  total_bulk_cost_comparable_items: number;
+  total_individual_benchmark_cost: number;
+  verified_savings_amount: number;
+  verified_savings_percentage: number;
+  total_items_evaluated: number;
+  items_with_verified_benchmarks: number;
+  items_excluded_count: number;
+  is_partial_coverage: boolean;
+  label: string;
+  items: ApiItemSavingsDetail[];
+}
+
