@@ -105,12 +105,19 @@
   - [x] Full backend test suite `backend/tests/test_phase5.py` (10/10 passed) and live Groq multilingual suite (4/4 passed).
   - [x] Frontend `OrderReviewCard` and `ClarificationModal` components fully integrated with production build passing.
 
-- [ ] **Phase 6 — Volunteer Shopping Dashboard**
-  - [ ] Master shopping list compilation across all flats.
-  - [ ] Category-wise aggregation (Rice & Grains, Oil, Dairy, etc.).
-  - [ ] Total quantity calculation.
-  - [ ] Packing breakdown by individual flat.
-  - [ ] Exportable/printable shopping checklist.
+- [x] **Phase 6 — Volunteer Shopping Dashboard**
+  - [x] Master shopping list compilation across all confirmed resident orders via `POST /api/societies/{id}/rounds/{id}/shopping-list/compile`.
+  - [x] Strict order eligibility: only `confirmed` orders are aggregated; `pending_review`, `needs_clarification`, `processing`, `failed`, and `rejected` are excluded.
+  - [x] Unconfirmed order warnings with explicit count and inspection list for unresolved orders.
+  - [x] Canonical category-wise aggregation across the 10 canonical categories with safe compatible unit normalizations (g -> kg, ml -> L).
+  - [x] Deterministic item combination rules: brand, variant, category, and unit differences remain cleanly separated.
+  - [x] Individual Flat-wise Packing Breakdown: grouped by flat with resident identity, item details, brands, and interactive packing checkboxes.
+  - [x] Compilation versioning and idempotency: atomic upsert recalculates fresh from source orders without double-counting.
+  - [x] Role-Based Access Control: volunteer and admin privilege enforced; resident and cross-society access blocked with 403 Forbidden.
+  - [x] Print-friendly checklist layout (`@media print` CSS, white background, A4 paper optimized, checkboxes).
+  - [x] RFC 4180 compliant CSV export for both consolidated bulk manifest and flat-wise packing list.
+  - [x] Automated test suite `backend/tests/test_phase6.py` (6/6 passed) and full regression suite (47/47 passed).
+  - [x] Frontend `ShoppingListPage.tsx` and `VolunteerDashboard.tsx` integrated with clean production build (`tsc -b && vite build`).
 
 - [ ] **Phase 7 — Billing & Savings**
   - [ ] Volunteer actual purchase price recording.

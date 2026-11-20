@@ -8,6 +8,8 @@ import {
   ApiGrocerySubmission,
   ApiGroceryOrder,
   ApiGroceryOrderItem,
+  ApiCompiledShoppingList,
+  ApiUnresolvedOrderInfo,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -294,5 +296,50 @@ export const api = {
       request<ApiGroceryOrder>(`/api/orders/${orderId}/retry`, {
         method: 'POST',
       }),
+  },
+
+  shoppingList: {
+    compile: (societyId: string, roundId: string) =>
+      request<ApiCompiledShoppingList>(
+        `/api/societies/${societyId}/rounds/${roundId}/shopping-list/compile`,
+        { method: 'POST' }
+      ),
+
+    get: (societyId: string, roundId: string) =>
+      request<ApiCompiledShoppingList>(
+        `/api/societies/${societyId}/rounds/${roundId}/shopping-list`
+      ),
+
+    getUnresolved: (societyId: string, roundId: string) =>
+      request<ApiUnresolvedOrderInfo[]>(
+        `/api/societies/${societyId}/rounds/${roundId}/shopping-list/unresolved`
+      ),
+
+    downloadCsv: async (
+      societyId: string,
+      roundId: string,
+      type: 'consolidated' | 'packing' = 'consolidated'
+    ): Promise<void> => {
+      const headers: Record<string, string> = {};
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+      const res = await fetch(
+        `${API_BASE_URL}/api/societies/${societyId}/rounds/${roundId}/shopping-list/export?type=${type}`,
+        { headers }
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to export CSV: ${res.statusText}`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `shopping_list_round_${roundId}_${type}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
   },
 };

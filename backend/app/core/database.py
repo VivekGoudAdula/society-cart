@@ -211,6 +211,14 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             [("user_id", ASCENDING), ("status", ASCENDING)],
             name="idx_orders_user_status",
         )
+
+        # Shopping Lists Collection (Phase 6):
+        # Unique shopping list per society round
+        await db.shopping_lists.create_index(
+            [("society_id", ASCENDING), ("round_id", ASCENDING)],
+            unique=True,
+            name="idx_shopping_lists_society_round_unique",
+        )
     except Exception as exc:
         logger.warning("Database index check: %s", exc)
 
@@ -270,3 +278,8 @@ def get_grocery_submissions_collection() -> AsyncCollection:
 def get_grocery_orders_collection() -> AsyncCollection:
     """Return the grocery_orders collection for structured AI interpretations."""
     return get_database().grocery_orders
+
+
+def get_shopping_lists_collection() -> AsyncCollection:
+    """Return the shopping_lists collection for consolidated volunteer shopping manifests."""
+    return get_database().shopping_lists

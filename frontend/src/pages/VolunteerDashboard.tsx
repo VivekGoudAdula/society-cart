@@ -429,10 +429,10 @@ export const VolunteerDashboard: React.FC = () => {
             <Button
               variant={activeRound.status === 'open' ? 'primary' : 'outline'}
               size="md"
-              onClick={() => navigate('/shopping-list')}
+              onClick={() => navigate(currentActiveRound ? `/shopping-list?roundId=${currentActiveRound.id}` : '/shopping-list')}
               leftIcon={<ShoppingCart className="h-4 w-4" />}
             >
-              Open Bulk Shopping List
+              Compile & View Shopping List
             </Button>
 
             {activeRound.status === 'open' ? (
@@ -536,10 +536,10 @@ export const VolunteerDashboard: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <button
-                          onClick={() => navigate('/shopping-list')}
+                          onClick={() => navigate(`/shopping-list?roundId=${r.id}`)}
                           className="font-semibold text-[#23865B] hover:underline"
                         >
-                          View Details
+                          Shopping Manifest
                         </button>
                       </td>
                     </tr>

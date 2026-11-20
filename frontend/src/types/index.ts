@@ -268,3 +268,99 @@ export interface ApiGroceryOrder {
   updated_at: string;
   confirmed_at?: string | null;
 }
+
+// =============================================================================
+// Phase 6 — Volunteer Shopping Dashboard & Manifest Types
+// =============================================================================
+
+export interface ApiContributingFlat {
+  flat_number: string;
+  user_id: string;
+  user_name: string;
+  order_id: string;
+  quantity: number;
+  unit?: string | null;
+  notes?: string | null;
+}
+
+export interface ApiConsolidatedItem {
+  item_key: string;
+  normalized_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  category: string;
+  total_quantity: number;
+  unit: string;
+  contributing_flats: ApiContributingFlat[];
+  contributing_flats_count: number;
+  original_names: string[];
+  is_purchased?: boolean;
+}
+
+export interface ApiCategoryGroup {
+  category: string;
+  category_name: string;
+  items: ApiConsolidatedItem[];
+  item_count: number;
+}
+
+export interface ApiPackingFlatItem {
+  item_id: string;
+  original_name: string;
+  normalized_name: string;
+  brand?: string | null;
+  variant?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  category: string;
+  is_packed?: boolean;
+}
+
+export interface ApiFlatPackingBreakdown {
+  flat_number: string;
+  user_id: string;
+  user_name: string;
+  order_id: string;
+  items: ApiPackingFlatItem[];
+  total_items: number;
+}
+
+export interface ApiUnresolvedOrderInfo {
+  order_id: string;
+  flat_number: string;
+  user_id: string;
+  user_name: string;
+  status: ApiOrderStatus | string;
+  clarification_prompt?: string | null;
+  error_message?: string | null;
+  raw_text: string;
+  updated_at: string;
+}
+
+export interface ApiShoppingListSummary {
+  total_confirmed_flats: number;
+  total_confirmed_orders: number;
+  total_distinct_items: number;
+  total_items_count: number;
+  total_unresolved_flats: number;
+  total_unresolved_orders: number;
+  has_unresolved_orders: boolean;
+  rejected_orders_count: number;
+}
+
+export interface ApiCompiledShoppingList {
+  id: string;
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  round_title?: string | null;
+  shopping_date?: string | null;
+  version: number;
+  compiled_at: string;
+  compiled_by_user_id: string;
+  summary: ApiShoppingListSummary;
+  categories: ApiCategoryGroup[];
+  packing_breakdown: ApiFlatPackingBreakdown[];
+  unresolved_orders: ApiUnresolvedOrderInfo[];
+}
+
