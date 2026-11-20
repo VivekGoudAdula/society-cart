@@ -1,15 +1,19 @@
 """Pydantic schemas for order rounds and grocery submissions.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional, Union
-from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, field_validator
 
 RoundStatus = Literal["draft", "open", "closed", "cancelled"]
 SubmissionStatus = Literal["reserved", "confirmed", "failed", "pending", "parsed"]
 
-KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
+try:
+    from zoneinfo import ZoneInfo
+    KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
+except Exception:
+    # Standard UTC+05:30 (India Standard Time) fallback for Windows systems without tzdata
+    KOLKATA_TZ = timezone(timedelta(hours=5, minutes=30))
 
 
 class AnnouncementDeliveryState(BaseModel):
