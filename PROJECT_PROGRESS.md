@@ -93,12 +93,17 @@
   - [x] End-to-end multi-user script verifying Volunteer Priya, Resident Rahul, Resident Sneha message exchange, closure, and auto-expiration.
   - [x] Frontend production build (`tsc -b && vite build`) passed with 0 errors.
 
-- [ ] **Phase 5 — AI Grocery Understanding**
-  - [ ] Groq API integration (Llama 3 inference).
-  - [ ] Multilingual parsing (English, Hindi, Telugu natural language).
-  - [ ] Structured extraction: Flat, Item, Quantity, Unit, Category.
-  - [ ] Unclear quantity handling and clarification prompts.
-  - [ ] AI confirmation bot messages in Nexconn group chat.
+- [x] **Phase 5 — AI Grocery Understanding**
+  - [x] Groq API integration with high-performance model (`openai/gpt-oss-120b`) and structured JSON schema enforcement.
+  - [x] Multilingual natural-language understanding across English, Hindi, Telugu, and mixed code-switching.
+  - [x] Canonical Indian grocery normalization across 10 categories (`grains_rice`, `pulses`, `vegetables`, `fruits`, `dairy`, `cooking_oils`, `spices`, `household_essentials`, `personal_care`, `other`).
+  - [x] Intelligent brand, item, quantity, and unit extraction with colloquial verb filtering (e.g. "teesko", "lelo").
+  - [x] Missing quantity and ambiguity detection with interactive resident clarification prompts.
+  - [x] Resident Review & Confirmation workflow with item-level manual quantity/brand/unit editing.
+  - [x] Strict privacy and authorization isolation: individual orders, items, and clarifications remain private to the resident dashboard and order review UI (never broadcasted to public society chat).
+  - [x] Atomic background extraction recovery with exclusive lease claiming (`processing_lease_id`, `processing_lease_until`) preventing race conditions and stale overwrites.
+  - [x] Full backend test suite `backend/tests/test_phase5.py` (10/10 passed) and live Groq multilingual suite (4/4 passed).
+  - [x] Frontend `OrderReviewCard` and `ClarificationModal` components fully integrated with production build passing.
 
 - [ ] **Phase 6 — Volunteer Shopping Dashboard**
   - [ ] Master shopping list compilation across all flats.
