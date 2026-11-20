@@ -1,7 +1,7 @@
 """Service layer for AI grocery orders, clarifications, manual edits, and confirmations.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
@@ -70,6 +70,7 @@ def _serialize_order(doc: Dict[str, Any]) -> GroceryOrderResponse:
         created_at=_ensure_utc(doc.get("created_at", datetime.now(timezone.utc))),
         updated_at=_ensure_utc(doc.get("updated_at", datetime.now(timezone.utc))),
         confirmed_at=_ensure_utc(doc.get("confirmed_at")),
+        recovery_attempts=int(doc.get("recovery_attempts", 0)),
     )
 
 
@@ -176,6 +177,7 @@ async def trigger_ai_extraction(
             "created_at": now,
             "updated_at": now,
             "confirmed_at": None,
+            "recovery_attempts": 0,
         }
 
         try:
@@ -232,6 +234,102 @@ async def trigger_ai_extraction(
             return_document=ReturnDocument.AFTER,
         )
         return _serialize_order(failed)
+
+
+async def recover_stale_processing_orders(
+    timeout_seconds: int = 120,
+    max_recovery_attempts: int = 3,
+) -> int:
+    """Scan and recover orders stuck in 'processing' status beyond timeout_seconds.
+
+    Atomic claim:
+    - Identifies orders where status == 'processing' and updated_at <= cutoff.
+    - Atomically increments recovery_attempts and updates updated_at.
+    - If recovery_attempts exceeds max_recovery_attempts, atomically marks as 'failed'.
+    - Otherwise re-runs Groq extraction and transitions to 'pending_review' or 'needs_clarification'.
+    - Preserves submission and prevents duplicate order creation.
+    """
+    orders_col = get_grocery_orders_collection()
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=timeout_seconds)
+
+    cursor = orders_col.find({
+        "status": "processing",
+        "updated_at": {"$lte": cutoff},
+    })
+    candidate_orders = await cursor.to_list(length=100)
+    recovered_count = 0
+
+    for candidate in candidate_orders:
+        order_id = candidate["_id"]
+        attempts = int(candidate.get("recovery_attempts", 0))
+
+        if attempts >= max_recovery_attempts:
+            await orders_col.update_one(
+                {"_id": order_id, "status": "processing"},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "error_message": f"Processing timed out after {attempts} attempts following backend restart.",
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+            continue
+
+        # Atomic claim: only claim if status is STILL 'processing'
+        claimed = await orders_col.find_one_and_update(
+            {
+                "_id": order_id,
+                "status": "processing",
+            },
+            {
+                "$inc": {"recovery_attempts": 1},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if not claimed:
+            continue
+
+        try:
+            raw_text = claimed.get("raw_text", "")
+            ai_output = await groq_service.extract_grocery_items(raw_text)
+
+            await orders_col.find_one_and_update(
+                {
+                    "_id": order_id,
+                    "status": "processing",
+                },
+                {
+                    "$set": {
+                        "detected_language": ai_output.detected_language,
+                        "items": [it.model_dump() for it in ai_output.items],
+                        "status": ai_output.overall_status,
+                        "clarification_prompt": ai_output.clarification_prompt,
+                        "error_message": None,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+            recovered_count += 1
+            logger.info("Successfully recovered stale order %s to status %s", order_id, ai_output.overall_status)
+        except Exception as exc:
+            logger.error("Failed to recover stale order %s: %s", order_id, exc)
+            if attempts + 1 >= max_recovery_attempts:
+                await orders_col.update_one(
+                    {"_id": order_id, "status": "processing"},
+                    {
+                        "$set": {
+                            "status": "failed",
+                            "error_message": f"Extraction failed during recovery: {exc}",
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
+                )
+
+    return recovered_count
 
 
 async def retry_ai_extraction(

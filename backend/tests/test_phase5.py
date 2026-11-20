@@ -149,69 +149,88 @@ async def setup_phase5_data(client: AsyncClient):
 async def test_01_multilingual_extraction_mocked():
     """Verify Groq extraction handles English, Telugu, Hindi, and Mixed code-switching."""
 
-    # 1. English
+    # 1. English - Bread & Eggs categorized as 'other' (never bakery or dairy)
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "en",
         "items": [
-            {"id": "item_1", "original_name": "rice", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_and_rice", "confidence": 0.98},
-            {"id": "item_2", "original_name": "sugar", "normalized_name": "Sugar", "quantity": 2.0, "unit": "packet", "category": "spices", "confidence": 0.95},
+            {"id": "item_1", "original_name": "whole wheat bread", "normalized_name": "Bread", "quantity": 2.0, "unit": "loaf", "category": "bakery", "confidence": 0.98},
+            {"id": "item_2", "original_name": "eggs", "normalized_name": "Eggs", "quantity": 6.0, "unit": "piece", "category": "dairy", "confidence": 0.95},
+            {"id": "item_3", "original_name": "tomatoes", "normalized_name": "Tomatoes", "quantity": 1.0, "unit": "kg", "category": "vegetables", "confidence": 0.95},
         ],
         "overall_status": "pending_review",
         "clarification_prompt": None,
     })
-    res_en = await groq_service.extract_grocery_items("Need 5 kg rice and 2 packets of sugar.")
+    res_en = await groq_service.extract_grocery_items("Please add 2 loaves of whole wheat bread, 1 kg tomatoes, and 6 eggs")
     assert res_en.detected_language == "en"
-    assert len(res_en.items) == 2
-    assert res_en.items[0].normalized_name == "Rice"
-    assert res_en.items[0].quantity == 5.0
-    assert res_en.items[0].unit == "kg"
+    assert len(res_en.items) == 3
+    # Bread must be 'other', not 'bakery'
+    assert res_en.items[0].normalized_name == "Bread"
+    assert res_en.items[0].category == "other"
+    # Eggs must be 'other', not 'dairy'
+    assert res_en.items[1].normalized_name == "Eggs"
+    assert res_en.items[1].category == "other"
+    # Tomatoes are 'vegetables'
+    assert res_en.items[2].category == "vegetables"
     assert res_en.overall_status == "pending_review"
 
-    # 2. Telugu
+    # 2. Telugu - కందిపప్పు MUST normalize to Toor Dal (pulses), NOT Chana Dal
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "te",
         "items": [
-            {"id": "item_1", "original_name": "ఉల్లిపాయలు", "normalized_name": "Onion", "quantity": 2.0, "unit": "kg", "category": "vegetables", "confidence": 0.96},
+            {"id": "item_1", "original_name": "కందిపప్పు", "normalized_name": "Chana Dal", "quantity": 1.0, "unit": "kg", "category": "pulses", "confidence": 0.96},
+            {"id": "item_2", "original_name": "సోనా మసూరి బియ్యం", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_rice", "brand": "Sona Masoori", "confidence": 0.98},
         ],
         "overall_status": "pending_review",
         "clarification_prompt": None,
     })
-    res_te = await groq_service.extract_grocery_items("నాకు 2 కిలోల ఉల్లిపాయలు కావాలి")
+    res_te = await groq_service.extract_grocery_items("నాకు 5 కిలోల బియ్యం (సోనా మసూరి), 1 కేజీ కందిపప్పు కావాలి")
     assert res_te.detected_language == "te"
-    assert res_te.items[0].original_name == "ఉల్లిపాయలు"
-    assert res_te.items[0].normalized_name == "Onion"
-    assert res_te.items[0].quantity == 2.0
+    # Verification: కందిపప్పు normalized to Toor Dal with category pulses
+    assert res_te.items[0].normalized_name == "Toor Dal"
+    assert res_te.items[0].category == "pulses"
+    assert res_te.items[1].normalized_name == "Rice"
+    assert res_te.items[1].category == "grains_rice"
 
-    # 3. Hindi
+    # 3. Hindi - आशीर्वाद आटा must preserve Aashirvaad as brand and Atta as item
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "hi",
         "items": [
-            {"id": "item_1", "original_name": "आलू", "normalized_name": "Potato", "quantity": 3.0, "unit": "kg", "category": "vegetables", "confidence": 0.97},
-            {"id": "item_2", "original_name": "तेल", "normalized_name": "Cooking Oil", "quantity": 1.0, "unit": "L", "category": "cooking_oils", "confidence": 0.92},
+            {"id": "item_1", "original_name": "आशीर्वाद आटा", "normalized_name": "Atta", "quantity": 2.0, "unit": "kg", "category": "grains_rice", "confidence": 0.97},
+            {"id": "item_2", "original_name": "सरसों का तेल", "normalized_name": "Mustard Oil", "quantity": 1.0, "unit": "L", "category": "cooking_oils", "confidence": 0.92},
+            {"id": "item_3", "original_name": "पनीर", "normalized_name": "Paneer", "quantity": 500.0, "unit": "g", "category": "dairy", "confidence": 0.95},
         ],
         "overall_status": "pending_review",
         "clarification_prompt": None,
     })
-    res_hi = await groq_service.extract_grocery_items("मुझे 3 किलो आलू और 1 लीटर तेल चाहिए")
+    res_hi = await groq_service.extract_grocery_items("मुझे 2 किलो आटा (आशीर्वाद), 1 लीटर सरसों का तेल और 500 ग्राम पनीर चाहिए")
     assert res_hi.detected_language == "hi"
-    assert res_hi.items[0].normalized_name == "Potato"
-    assert res_hi.items[1].quantity == 1.0
-    assert res_hi.items[1].unit == "L"
+    assert res_hi.items[0].normalized_name == "Atta"
+    assert res_hi.items[0].brand == "Aashirvaad"
+    assert res_hi.items[0].category == "grains_rice"
+    assert res_hi.items[1].normalized_name == "Mustard Oil"
+    assert res_hi.items[1].category == "cooking_oils"
+    assert res_hi.items[2].category == "dairy"
 
-    # 4. Mixed code-switching (with legacy awaiting_confirmation normalized to pending_review)
+    # 4. Mixed code-switching with vague quantity: "thoda coriander"
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "mixed",
         "items": [
-            {"id": "item_1", "original_name": "onions", "normalized_name": "Onion", "quantity": 2.0, "unit": "kg", "category": "vegetables", "confidence": 0.95},
-            {"id": "item_2", "original_name": "atta", "normalized_name": "Whole Wheat Atta", "quantity": 1.0, "unit": "packet", "category": "grains_and_rice", "confidence": 0.94},
+            {"id": "item_1", "original_name": "toor dal", "normalized_name": "Toor Dal", "quantity": 1.0, "unit": "kg", "category": "pulses", "confidence": 0.95},
+            {"id": "item_2", "original_name": "curd", "normalized_name": "Curd", "quantity": 2.0, "unit": "packet", "category": "dairy", "confidence": 0.94},
+            {"id": "item_3", "original_name": "coriander", "normalized_name": "Coriander", "quantity": None, "unit": None, "category": "vegetables", "confidence": 0.85, "needs_clarification": True, "clarification_reason": "Specify quantity for coriander"},
         ],
-        "overall_status": "awaiting_confirmation",
-        "clarification_prompt": None,
+        "overall_status": "needs_clarification",
+        "clarification_prompt": "Please specify the quantity and unit for coriander.",
     })
-    res_mix = await groq_service.extract_grocery_items("2 kg onions aur 1 packet atta add karo")
+    res_mix = await groq_service.extract_grocery_items("1 kg toor dal teesko, 2 packets curd and thoda coriander also")
     assert res_mix.detected_language == "mixed"
-    assert len(res_mix.items) == 2
-    assert res_mix.overall_status == "pending_review"
+    assert len(res_mix.items) == 3
+    # Coriander is vegetables, quantity is None, requires clarification
+    assert res_mix.items[2].normalized_name == "Coriander"
+    assert res_mix.items[2].category == "vegetables"
+    assert res_mix.items[2].quantity is None
+    assert res_mix.items[2].needs_clarification is True
+    assert res_mix.overall_status == "needs_clarification"
 
 
 @pytest.mark.asyncio
@@ -602,3 +621,119 @@ async def test_07_recovery_retry_and_idempotency(client: AsyncClient, setup_phas
     )
     assert idem_call.id == order_failed.id
     assert idem_call.status == "pending_review"
+
+
+@pytest.mark.asyncio
+async def test_08_automatic_restart_recovery_and_atomic_claim(client: AsyncClient, setup_phase5_data):
+    """Simulate a backend crash/restart with orders left in 'processing' status.
+
+    Proves:
+    1. On startup or periodic recovery, stale 'processing' orders are identified.
+    2. Atomic claim prevents race conditions and duplicate order creation.
+    3. Eligible orders transition to 'pending_review' with extracted items.
+    4. Original submission in grocery_submissions remains intact and valid.
+    5. Bounded retries move permanently unsuccessful orders to 'failed'.
+    """
+    from app.core.database import get_grocery_orders_collection, get_grocery_submissions_collection
+
+    data = setup_phase5_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    headers_res1 = data["headers_res1"]
+
+    sub_id = f"sub_crash_{int(time.time()*1000)}"
+
+    # 1. Resident reserves submission
+    res_reserve = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{round_id}/submissions/reserve",
+        headers=headers_res1,
+        json={"submission_id": sub_id, "raw_text": "5 kg sona masoori rice and 1 kg toor dal"},
+    )
+    assert res_reserve.status_code == 201
+
+    # 2. Simulate server crash: order was persisted in 'processing' 10 minutes ago
+    stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    orders_col = get_grocery_orders_collection()
+    stale_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_id,
+        "message_id": "msg_crash_1",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "5 kg sona masoori rice and 1 kg toor dal",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "clarification_prompt": None,
+        "clarification_history": [],
+        "ai_model": "openai/gpt-oss-120b",
+        "prompt_version": "v1.0",
+        "created_at": stale_time,
+        "updated_at": stale_time,
+        "confirmed_at": None,
+        "recovery_attempts": 0,
+    }
+    inserted = await orders_col.insert_one(stale_doc)
+    stale_order_id = inserted.inserted_id
+
+    # 3. Configure mock handler for recovery
+    groq_service.set_mock_groq_handler(lambda raw, clar: {
+        "detected_language": "en",
+        "items": [
+            {"id": "item_1", "original_name": "sona masoori rice", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_rice", "brand": "Sona Masoori", "confidence": 0.98},
+            {"id": "item_2", "original_name": "toor dal", "normalized_name": "Toor Dal", "quantity": 1.0, "unit": "kg", "category": "pulses", "confidence": 0.95},
+        ],
+        "overall_status": "pending_review",
+        "clarification_prompt": None,
+    })
+
+    # 4. Trigger automatic recovery (simulating application startup or periodic scanner)
+    recovered_count = await order_service.recover_stale_processing_orders(timeout_seconds=60)
+    assert recovered_count >= 1
+
+    # 5. Verify the order is recovered and no duplicate documents exist
+    recovered_order = await orders_col.find_one({"_id": stale_order_id})
+    assert recovered_order is not None
+    assert recovered_order["status"] == "pending_review"
+    assert len(recovered_order["items"]) == 2
+    assert recovered_order["items"][0]["normalized_name"] == "Rice"
+    assert recovered_order["items"][1]["normalized_name"] == "Toor Dal"
+
+    # Exactly 1 order document exists for this submission (no duplicates)
+    matching_orders = await orders_col.count_documents({"submission_id": sub_id})
+    assert matching_orders == 1
+
+    # Original submission in grocery_submissions is preserved
+    sub_col = get_grocery_submissions_collection()
+    sub_record = await sub_col.find_one({"submission_id": sub_id})
+    assert sub_record is not None
+    assert sub_record["raw_text"] == "5 kg sona masoori rice and 1 kg toor dal"
+
+    # 6. Bounded retries: an order that repeatedly fails recovery reaches max_recovery_attempts and transitions to 'failed'
+    sub_fail_bound = f"sub_crash_fail_{int(time.time()*1000)}"
+    failing_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_fail_bound,
+        "message_id": "msg_fail_bound",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "unparseable",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "created_at": stale_time,
+        "updated_at": stale_time,
+        "recovery_attempts": 3,  # Reached max attempts
+    }
+    await orders_col.insert_one(failing_doc)
+
+    await order_service.recover_stale_processing_orders(timeout_seconds=60, max_recovery_attempts=3)
+    bounded_failed_order = await orders_col.find_one({"submission_id": sub_fail_bound})
+    assert bounded_failed_order["status"] == "failed"
+

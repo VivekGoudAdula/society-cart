@@ -205,6 +205,18 @@ export interface ApiGrocerySubmission {
   created_at: string;
 }
 
+export type ApiGroceryCategory =
+  | 'grains_rice'
+  | 'pulses'
+  | 'vegetables'
+  | 'fruits'
+  | 'dairy'
+  | 'cooking_oils'
+  | 'spices'
+  | 'household_essentials'
+  | 'personal_care'
+  | 'other';
+
 export type ApiOrderStatus =
   | 'processing'
   | 'pending_review'
@@ -220,7 +232,7 @@ export interface ApiGroceryOrderItem {
   normalized_name: string;
   quantity: number | null;
   unit: string | null;
-  category: string;
+  category: ApiGroceryCategory | string;
   brand?: string | null;
   variant?: string | null;
   confidence: number;

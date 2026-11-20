@@ -6,8 +6,8 @@ from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 GroceryCategory = Literal[
-    "grains_and_rice",
-    "pulses_and_lentils",
+    "grains_rice",
+    "pulses",
     "vegetables",
     "fruits",
     "dairy",
@@ -50,6 +50,63 @@ class GroceryItemSchema(BaseModel):
         if v is not None and v <= 0:
             raise ValueError("Quantity must be a positive number greater than 0.")
         return v
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def normalize_category(cls, v: Optional[str]) -> str:
+        if not v:
+            return "other"
+        clean = str(v).strip().lower().replace("-", "_").replace(" ", "_")
+        mapping = {
+            "grains_and_rice": "grains_rice",
+            "grains_rice": "grains_rice",
+            "grains": "grains_rice",
+            "grain": "grains_rice",
+            "rice": "grains_rice",
+            "cereal": "grains_rice",
+            "flour": "grains_rice",
+            "atta": "grains_rice",
+            "pulses_and_lentils": "pulses",
+            "pulses_lentils": "pulses",
+            "pulses": "pulses",
+            "lentils": "pulses",
+            "dal": "pulses",
+            "dals": "pulses",
+            "vegetable": "vegetables",
+            "vegetables": "vegetables",
+            "produce": "vegetables",
+            "herbs": "vegetables",
+            "fruit": "fruits",
+            "fruits": "fruits",
+            "dairy": "dairy",
+            "oil": "cooking_oils",
+            "oils": "cooking_oils",
+            "cooking_oil": "cooking_oils",
+            "cooking_oils": "cooking_oils",
+            "spice": "spices",
+            "spices": "spices",
+            "condiments": "spices",
+            "household": "household_essentials",
+            "household_essentials": "household_essentials",
+            "cleaning": "household_essentials",
+            "personal_care": "personal_care",
+            "cosmetics": "personal_care",
+            "bakery": "other",
+        }
+        canonical = mapping.get(clean, clean)
+        valid = (
+            "grains_rice",
+            "pulses",
+            "vegetables",
+            "fruits",
+            "dairy",
+            "cooking_oils",
+            "spices",
+            "household_essentials",
+            "personal_care",
+            "other",
+        )
+        return canonical if canonical in valid else "other"
 
     @field_validator("unit")
     @classmethod
@@ -144,6 +201,7 @@ class GroceryOrderResponse(BaseModel):
     created_at: datetime = Field(..., description="Order creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
     confirmed_at: Optional[datetime] = Field(None, description="Resident confirmation timestamp")
+    recovery_attempts: int = Field(0, description="Number of recovery attempts following server restarts")
 
 
 class ClarifyOrderRequest(BaseModel):

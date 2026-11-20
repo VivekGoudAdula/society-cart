@@ -340,6 +340,13 @@ async def check_expired_rounds_once() -> int:
                 current_attempts=c_attempts,
             )
 
+    # 3. Recover stale processing grocery orders beyond timeout
+    try:
+        from app.services import order_service
+        await order_service.recover_stale_processing_orders(timeout_seconds=120)
+    except Exception as rec_exc:
+        logger.warning("Periodic background order recovery check encountered: %s", rec_exc)
+
     return closed_count
 
 

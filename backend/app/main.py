@@ -3,6 +3,7 @@
 Exposes authentication, user management, and society APIs with CORS configuration.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Dict
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, societies, users, chat, rounds, orders
 from app.core.config import get_settings
 from app.core.database import close_mongo_connection, connect_to_mongo
+from app.services import order_service
 from app.services.round_scheduler import start_round_scheduler, stop_round_scheduler
 
 settings = get_settings()
@@ -20,6 +22,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifespan: connect to MongoDB, start scheduler on startup, close on shutdown."""
     await connect_to_mongo()
     start_round_scheduler()
+    # Trigger automatic background recovery for any interrupted orders on startup
+    asyncio.create_task(order_service.recover_stale_processing_orders(timeout_seconds=0))
     yield
     stop_round_scheduler()
     await close_mongo_connection()

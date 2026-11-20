@@ -1,81 +1,82 @@
 """Standalone live verification script for Groq API integration.
 
 Runs ONLY live Groq API calls when GROQ_API_KEY is configured.
-Keeps live integration testing completely separate from fast, deterministic unit test fixtures.
+Exercises the actual groq_service pipeline with the canonical Indian grocery taxonomy.
 """
 
 import asyncio
-import json
 import os
 import sys
-from dotenv import dotenv_values
-from groq import AsyncGroq
 
-# Resolve backend .env
-ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
-cfg = dotenv_values(ENV_PATH)
-API_KEY = cfg.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-MODEL = cfg.get("GROQ_MODEL") or os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
+# Ensure backend root is in sys.path
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
+from app.core.config import get_settings
+from app.services import groq_service
 
 
 async def run_live_tests():
-    if not API_KEY or not API_KEY.strip():
+    settings = get_settings()
+    if not settings.groq_api_key or not settings.groq_api_key.strip():
         print("[-] GROQ_API_KEY is not configured. Live integration cannot run.")
         sys.exit(1)
 
-    print(f"[+] Initializing Groq client with model: {MODEL}")
-    client = AsyncGroq(api_key=API_KEY.strip(), timeout=30.0)
+    print(f"[+] Initializing live Groq verification with model: {settings.groq_model}")
 
     test_cases = [
         {
             "lang": "English",
             "text": "Please add 2 loaves of whole wheat bread, 1 kg tomatoes, and 6 eggs",
+            "checks": [
+                ("Bread", "other"),
+                ("Eggs", "other"),
+                ("Tomatoes", "vegetables"),
+            ],
         },
         {
             "lang": "Telugu",
             "text": "నాకు 5 కిలోల బియ్యం (సోనా మసూరి), 2 లీటర్ల విజయ పాలు, 1 కేజీ కందిపప్పు కావాలి",
+            "checks": [
+                ("Toor Dal", "pulses"),  # కందిపప్పు MUST be Toor Dal, NOT Chana Dal
+                ("Rice", "grains_rice"),
+                ("Milk", "dairy"),
+            ],
         },
         {
             "lang": "Hindi",
             "text": "मुझे 2 किलो आटा (आशीर्वाद), 1 लीटर सरसों का तेल और 500 ग्राम पनीर चाहिए",
+            "checks": [
+                ("Atta", "grains_rice"),  # आशीर्वाद आटा must preserve brand Aashirvaad
+                ("Mustard Oil", "cooking_oils"),
+                ("Paneer", "dairy"),
+            ],
         },
         {
             "lang": "Mixed Code-Switching",
             "text": "1 kg toor dal teesko, 2 packets curd and thoda coriander also",
+            "checks": [
+                ("Toor Dal", "pulses"),
+                ("Curd", "dairy"),
+                ("Coriander", "vegetables"),  # Unspecified quantity -> needs_clarification
+            ],
         },
     ]
-
-    system_prompt = """You are the AI Grocery Parser for Society Cart. Extract grocery requirements into a valid JSON object with:
-- detected_language: ("en" | "te" | "hi" | "mixed")
-- items: list of {id, original_name, normalized_name, quantity, unit, category, brand, variant, confidence, needs_clarification, clarification_reason}
-- overall_status: ("pending_review" | "needs_clarification")
-- clarification_prompt: string or null
-Respond ONLY with valid JSON."""
 
     success_count = 0
     for tc in test_cases:
         print(f"\n--- Testing {tc['lang']} ---")
         print(f"Input: {tc['text']}")
         try:
-            res = await client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Extract grocery requirements from this message:\n\"\"\"{tc['text']}\"\"\""},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=800,
-            )
-            raw_content = res.choices[0].message.content
-            parsed = json.loads(raw_content)
-            items = parsed.get("items", [])
-            status = parsed.get("overall_status", "pending_review")
-            print(f"[✓] Status: {status} | Language: {parsed.get('detected_language')} | Items: {len(items)}")
-            for idx, it in enumerate(items, 1):
-                print(f"    {idx}. {it.get('normalized_name')}: {it.get('quantity')} {it.get('unit')} ({it.get('category')})")
-            if parsed.get("clarification_prompt"):
-                print(f"    Clarification Prompt: {parsed.get('clarification_prompt')}")
+            output = await groq_service.extract_grocery_items(tc["text"])
+            print(f"[✓] Status: {output.overall_status} | Language: {output.detected_language} | Items: {len(output.items)}")
+            for idx, it in enumerate(output.items, 1):
+                brand_str = f" [Brand: {it.brand}]" if it.brand else ""
+                clar_str = f" [Needs Clarification: {it.clarification_reason}]" if it.needs_clarification else ""
+                print(f"    {idx}. {it.normalized_name}: {it.quantity} {it.unit} (Category: {it.category}){brand_str}{clar_str}")
+            if output.clarification_prompt:
+                print(f"    Clarification Prompt: {output.clarification_prompt}")
             success_count += 1
         except Exception as exc:
             print(f"[x] Failed: {exc}")
