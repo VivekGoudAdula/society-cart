@@ -46,7 +46,7 @@ MULTILINGUAL SUPPORT:
 CLARIFICATION RULES:
 - Never guess or invent missing quantities. If a resident says "need oil", do NOT guess 1 litre sunflower oil. Set quantity to null, needs_clarification to true.
 - If any item needs clarification, set overall_status to "needs_clarification" and formulate a clear, polite clarification_prompt.
-- If all items have valid quantities and identifiable meanings, set overall_status to "awaiting_confirmation" and clarification_prompt to null.
+- If all items have valid quantities and identifiable meanings, set overall_status to "pending_review" and clarification_prompt to null.
 
 OUTPUT FORMAT:
 Respond with ONLY a valid JSON object matching this schema:
@@ -67,7 +67,7 @@ Respond with ONLY a valid JSON object matching this schema:
       "clarification_reason": null
     }
   ],
-  "overall_status": "awaiting_confirmation" | "needs_clarification",
+  "overall_status": "pending_review" | "needs_clarification",
   "clarification_prompt": null | "..."
 }
 """
@@ -81,7 +81,7 @@ You are given:
 Your job is to update the grocery items list:
 - Resolve ambiguous items or fill in missing quantities/variants based on the resident's response.
 - Keep previously confirmed items intact.
-- If all items are now clear, set overall_status to "awaiting_confirmation" and clarification_prompt to null.
+- If all items are now clear, set overall_status to "pending_review" and clarification_prompt to null.
 - If items still require clarification, set overall_status to "needs_clarification" and update clarification_prompt.
 
 Respond with ONLY a valid JSON object matching the standard extraction schema.

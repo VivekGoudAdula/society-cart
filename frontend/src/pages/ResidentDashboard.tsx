@@ -180,7 +180,7 @@ export const ResidentDashboard: React.FC = () => {
                 className={`p-4 transition-all ${
                   ord.status === 'needs_clarification'
                     ? 'border-amber-300 bg-amber-50/30'
-                    : ord.status === 'awaiting_confirmation'
+                    : ord.status === 'pending_review' || ord.status === 'awaiting_confirmation'
                     ? 'border-emerald-300 bg-emerald-50/20'
                     : 'border-gray-200'
                 }`}

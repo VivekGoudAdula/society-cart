@@ -79,6 +79,20 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
     }
   };
 
+  const handleRetry = async () => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const updated = await api.orders.retry(order.id);
+      setItems(updated.items);
+      onOrderUpdated(updated);
+    } catch (err: any) {
+      setError(err.message || 'Failed to retry order extraction.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSendClarification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clarificationText.trim()) return;
@@ -230,6 +244,22 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5 text-emerald-800 text-sm">
               <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>This order has been confirmed by you and is locked for the bulk round shopping list.</span>
+            </div>
+          )}
+
+          {order.status === 'failed' && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center justify-between gap-2.5 text-red-800 text-sm">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+                <span>AI extraction encountered an error or timed out.</span>
+              </div>
+              <button
+                onClick={handleRetry}
+                disabled={isSubmitting}
+                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold"
+              >
+                {isSubmitting ? 'Retrying...' : 'Retry Extraction'}
+              </button>
             </div>
           )}
 

@@ -132,3 +132,19 @@ async def reject_order(
         caller_user_id=current_user.id,
         caller_role="resident",
     )
+
+
+@router.post(
+    "/orders/{order_id}/retry",
+    response_model=GroceryOrderResponse,
+    summary="Retry AI extraction for a failed or interrupted order",
+)
+async def retry_order(
+    order_id: str,
+    current_user: UserResponse = Depends(get_current_active_user),
+) -> GroceryOrderResponse:
+    """Allow resident owner to retry AI extraction."""
+    return await order_service.retry_ai_extraction(
+        order_id=order_id,
+        caller_user_id=current_user.id,
+    )

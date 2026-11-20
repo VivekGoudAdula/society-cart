@@ -11,6 +11,7 @@ from pymongo import ReturnDocument
 from app.core.config import get_settings
 from app.core.database import (
     get_grocery_orders_collection,
+    get_memberships_collection,
     get_societies_collection,
 )
 from app.schemas.order import (
@@ -21,7 +22,6 @@ from app.schemas.order import (
     OrderStatus,
 )
 from app.services import groq_service
-from app.services.nexconn_service import send_system_bot_message
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +73,43 @@ def _serialize_order(doc: Dict[str, Any]) -> GroceryOrderResponse:
     )
 
 
-async def _get_society_nexconn_group_id(society_id: str) -> Optional[str]:
-    """Retrieve the Nexconn group channel identifier for an apartment society."""
-    societies = get_societies_collection()
-    soc = await societies.find_one({"_id": ObjectId(society_id)})
-    if not soc:
-        return None
-    return soc.get("nexconn_group_id") or f"society_{soc['_id']}"
+async def _verify_order_access(
+    order: Dict[str, Any],
+    caller_user_id: str,
+    allow_volunteer: bool = False,
+) -> str:
+    """Verify caller membership and order authorization.
+
+    Rules:
+    - Caller must belong to the same society as the order.
+    - Owner resident is always allowed.
+    - Volunteers and admins are allowed only when allow_volunteer is True (viewing).
+    - Volunteers and other residents cannot alter, clarify, confirm, or reject another resident's order.
+    """
+    mem = await get_memberships_collection().find_one({
+        "user_id": caller_user_id,
+        "society_id": order["society_id"],
+        "is_active": True,
+    })
+    if not mem:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this apartment society.",
+        )
+
+    role = mem.get("role", "resident")
+    is_owner = str(order["user_id"]) == caller_user_id
+
+    if is_owner:
+        return role
+
+    if allow_volunteer and role in ("volunteer", "admin"):
+        return role
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You are not authorized to access or modify this grocery order.",
+    )
 
 
 async def trigger_ai_extraction(
@@ -95,53 +125,79 @@ async def trigger_ai_extraction(
 ) -> GroceryOrderResponse:
     """Execute AI extraction on confirmed resident grocery submission.
 
-    Idempotent: If an order already exists for this submission, returns existing record.
+    Idempotent & Recoverable:
+    - If order already exists in a completed or actionable state, returns existing.
+    - If order exists in 'processing' or 'failed' (e.g. process was interrupted), resumes extraction.
+    - Never publishes private resident items or flat numbers to the public chat.
     """
     orders_col = get_grocery_orders_collection()
-
-    # 1. Idempotency Check: Avoid duplicate processing
-    existing = await orders_col.find_one({"submission_id": submission_id})
-    if existing:
-        logger.info("Order for submission %s already exists. Returning existing.", submission_id)
-        return _serialize_order(existing)
-
     settings = get_settings()
     now = datetime.now(timezone.utc)
 
-    # 2. Persist initial 'processing' record
-    order_doc = {
-        "society_id": society_id,
-        "round_id": round_id,
-        "round_number": round_number,
-        "submission_id": submission_id,
-        "message_id": message_id,
-        "user_id": user_id,
-        "flat_number": flat_number,
-        "user_name": user_name,
-        "raw_text": raw_text,
-        "detected_language": "en",
-        "items": [],
-        "status": "processing",
-        "clarification_prompt": None,
-        "clarification_history": [],
-        "ai_model": settings.groq_model,
-        "prompt_version": "v1.0",
-        "created_at": now,
-        "updated_at": now,
-        "confirmed_at": None,
-    }
-
-    try:
-        res = await orders_col.insert_one(order_doc)
-        order_doc["_id"] = res.inserted_id
-    except Exception as exc:
-        # Race condition catch if duplicate concurrent request arrived
-        existing = await orders_col.find_one({"submission_id": submission_id})
-        if existing:
+    # 1. Idempotency & Recovery Check
+    existing = await orders_col.find_one({"submission_id": submission_id})
+    if existing:
+        completed_statuses = (
+            "pending_review",
+            "awaiting_confirmation",
+            "needs_clarification",
+            "confirmed",
+            "rejected",
+        )
+        if existing.get("status") in completed_statuses:
+            logger.info(
+                "Order for submission %s already exists with status %s. Returning existing.",
+                submission_id,
+                existing.get("status"),
+            )
             return _serialize_order(existing)
-        raise exc
 
-    # 3. Call Groq AI service
+        # Existing record is in 'processing' or 'failed'; resume/recover
+        order_doc = existing
+    else:
+        # 2. Persist initial 'processing' record
+        order_doc = {
+            "society_id": society_id,
+            "round_id": round_id,
+            "round_number": round_number,
+            "submission_id": submission_id,
+            "message_id": message_id,
+            "user_id": user_id,
+            "flat_number": flat_number,
+            "user_name": user_name,
+            "raw_text": raw_text,
+            "detected_language": "en",
+            "items": [],
+            "status": "processing",
+            "clarification_prompt": None,
+            "clarification_history": [],
+            "ai_model": settings.groq_model,
+            "prompt_version": "v1.0",
+            "created_at": now,
+            "updated_at": now,
+            "confirmed_at": None,
+        }
+
+        try:
+            res = await orders_col.insert_one(order_doc)
+            order_doc["_id"] = res.inserted_id
+        except Exception:
+            # Handle potential concurrent insert race condition
+            existing = await orders_col.find_one({"submission_id": submission_id})
+            if existing:
+                if existing.get("status") in (
+                    "pending_review",
+                    "awaiting_confirmation",
+                    "needs_clarification",
+                    "confirmed",
+                    "rejected",
+                ):
+                    return _serialize_order(existing)
+                order_doc = existing
+            else:
+                raise
+
+    # 3. Call Groq AI service with bounded failure handling
     try:
         ai_output: AIExtractionOutput = await groq_service.extract_grocery_items(raw_text)
 
@@ -153,33 +209,17 @@ async def trigger_ai_extraction(
                     "items": [it.model_dump() for it in ai_output.items],
                     "status": ai_output.overall_status,
                     "clarification_prompt": ai_output.clarification_prompt,
+                    "error_message": None,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
             return_document=ReturnDocument.AFTER,
         )
-
-        # Notify society group channel
-        group_id = await _get_society_nexconn_group_id(society_id)
-        if group_id:
-            status_msg = (
-                f"🤖 [Society Cart AI] Grocery list from Flat {flat_number} has been processed "
-                f"and is awaiting resident review."
-            )
-            extra = {
-                "type": "ai_order_event",
-                "action": "extracted",
-                "order_id": str(updated["_id"]),
-                "flat_number": flat_number,
-                "status": ai_output.overall_status,
-            }
-            await send_system_bot_message(group_id, status_msg, extra)
-
         return _serialize_order(updated)
 
     except Exception as ai_exc:
         logger.error("AI extraction error for submission %s: %s", submission_id, ai_exc)
-        # Bounded failure update without invalidating original submission
+        # Safe failure update: record failure without invalidating or corrupting original submission
         failed = await orders_col.find_one_and_update(
             {"_id": order_doc["_id"]},
             {
@@ -194,42 +234,11 @@ async def trigger_ai_extraction(
         return _serialize_order(failed)
 
 
-async def _verify_order_access(
-    order: Dict[str, Any],
-    caller_user_id: str,
-    allow_volunteer: bool = True,
-) -> str:
-    """Verify caller's membership in society and ownership or authorized role."""
-    from app.core.database import get_memberships_collection
-    mem = await get_memberships_collection().find_one({
-        "user_id": caller_user_id,
-        "society_id": order["society_id"],
-        "is_active": True,
-    })
-    if not mem:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this apartment society.",
-        )
-
-    role = mem.get("role", "resident")
-    is_owner = str(order["user_id"]) == caller_user_id
-    if is_owner or (allow_volunteer and role in ("volunteer", "admin")):
-        return role
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="You are not authorized to view or modify another resident's grocery order.",
-    )
-
-
-async def get_order_by_id(
+async def retry_ai_extraction(
     order_id: str,
     caller_user_id: str,
-    caller_role: str = "resident",
-    society_id: Optional[str] = None,
 ) -> GroceryOrderResponse:
-    """Retrieve an individual grocery order enforcing resident privacy and RBAC."""
+    """Manually retry AI extraction for an order that failed or was interrupted."""
     orders_col = get_grocery_orders_collection()
     order = await orders_col.find_one({"_id": ObjectId(order_id)})
     if not order:
@@ -238,7 +247,78 @@ async def get_order_by_id(
             detail="Grocery order not found.",
         )
 
-    # Society scoping check
+    # Only owner resident can retry their order
+    await _verify_order_access(order, caller_user_id, allow_volunteer=False)
+
+    if order.get("status") in ("confirmed", "rejected"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot retry extraction for an order in '{order['status']}' state.",
+        )
+
+    # Mark as processing
+    await orders_col.update_one(
+        {"_id": order["_id"]},
+        {"$set": {"status": "processing", "updated_at": datetime.now(timezone.utc)}},
+    )
+
+    try:
+        raw_text = order.get("raw_text", "")
+        ai_output: AIExtractionOutput = await groq_service.extract_grocery_items(raw_text)
+
+        updated = await orders_col.find_one_and_update(
+            {"_id": order["_id"]},
+            {
+                "$set": {
+                    "detected_language": ai_output.detected_language,
+                    "items": [it.model_dump() for it in ai_output.items],
+                    "status": ai_output.overall_status,
+                    "clarification_prompt": ai_output.clarification_prompt,
+                    "error_message": None,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        return _serialize_order(updated)
+
+    except Exception as exc:
+        logger.error("Retry extraction failed for order %s: %s", order_id, exc)
+        failed = await orders_col.find_one_and_update(
+            {"_id": order["_id"]},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": str(exc),
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        return _serialize_order(failed)
+
+
+async def get_order_by_id(
+    order_id: str,
+    caller_user_id: str,
+    caller_role: str = "resident",
+    society_id: Optional[str] = None,
+) -> GroceryOrderResponse:
+    """Retrieve an individual grocery order enforcing resident privacy and RBAC.
+
+    - The resident who created the order can view it.
+    - Volunteers and Admins belonging to the SAME society can view it.
+    - Other residents cannot view it (403 Forbidden).
+    - Cross-society callers cannot access it (403 Forbidden).
+    """
+    orders_col = get_grocery_orders_collection()
+    order = await orders_col.find_one({"_id": ObjectId(order_id)})
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Grocery order not found.",
+        )
+
     if society_id and order["society_id"] != society_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -280,16 +360,35 @@ async def clarify_order(
     caller_role: str,
     clarification_text: str,
 ) -> GroceryOrderResponse:
-    """Process resident's clarification response for ambiguous items."""
+    """Process resident clarification response for ambiguous items.
+
+    Enforces:
+    - Only the resident owner can clarify their order (allow_volunteer=False).
+    - Cannot clarify already confirmed, rejected, or currently processing orders.
+    """
     orders_col = get_grocery_orders_collection()
     order = await orders_col.find_one({"_id": ObjectId(order_id)})
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
-    await _verify_order_access(order, caller_user_id, allow_volunteer=True)
+    await _verify_order_access(order, caller_user_id, allow_volunteer=False)
 
-    if order["status"] == "confirmed":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot clarify an already confirmed order.")
+    current_status = order.get("status")
+    if current_status == "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot clarify an already confirmed order.",
+        )
+    if current_status == "rejected":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot clarify a rejected order.",
+        )
+    if current_status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot clarify an order that is currently processing.",
+        )
 
     # Re-evaluate with Groq service
     raw_text = order["raw_text"]
@@ -332,16 +431,35 @@ async def update_order_items(
     caller_role: str,
     items: List[GroceryItemSchema],
 ) -> GroceryOrderResponse:
-    """Manually update grocery items (edit, add, remove) by the resident."""
+    """Manually update grocery items (edit, add, remove) by the resident owner.
+
+    Enforces:
+    - Only the resident owner can modify their items (allow_volunteer=False).
+    - Cannot modify already confirmed, rejected, or processing orders.
+    """
     orders_col = get_grocery_orders_collection()
     order = await orders_col.find_one({"_id": ObjectId(order_id)})
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
-    await _verify_order_access(order, caller_user_id, allow_volunteer=True)
+    await _verify_order_access(order, caller_user_id, allow_volunteer=False)
 
-    if order["status"] == "confirmed":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify an already confirmed order.")
+    current_status = order.get("status")
+    if current_status == "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot modify an already confirmed order.",
+        )
+    if current_status == "rejected":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot modify a rejected order.",
+        )
+    if current_status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot modify an order that is currently processing.",
+        )
 
     now = datetime.now(timezone.utc)
     updated = await orders_col.find_one_and_update(
@@ -349,7 +467,7 @@ async def update_order_items(
         {
             "$set": {
                 "items": [it.model_dump() for it in items],
-                "status": "awaiting_confirmation",
+                "status": "pending_review",
                 "clarification_prompt": None,
                 "updated_at": now,
             }
@@ -365,16 +483,35 @@ async def confirm_order(
     caller_user_id: str,
     caller_role: str,
 ) -> GroceryOrderResponse:
-    """Resident explicitly confirms the AI interpretation of their order."""
+    """Resident explicitly confirms the AI interpretation of their order.
+
+    Enforces:
+    - Only the resident owner can confirm their order (allow_volunteer=False).
+    - Cannot confirm a rejected order or currently processing order.
+    - Cannot confirm an empty grocery order.
+    - Confirmation is idempotent.
+    - Does NOT broadcast private details to public society chat.
+    """
     orders_col = get_grocery_orders_collection()
     order = await orders_col.find_one({"_id": ObjectId(order_id)})
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
-    await _verify_order_access(order, caller_user_id, allow_volunteer=True)
+    await _verify_order_access(order, caller_user_id, allow_volunteer=False)
 
-    if order["status"] == "confirmed":
+    current_status = order.get("status")
+    if current_status == "confirmed":
         return _serialize_order(order)
+    if current_status == "rejected":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot confirm a rejected order.",
+        )
+    if current_status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot confirm an order that is currently processing.",
+        )
 
     if not order.get("items"):
         raise HTTPException(
@@ -395,16 +532,6 @@ async def confirm_order(
         return_document=ReturnDocument.AFTER,
     )
 
-    # Optional channel announcement
-    group_id = await _get_society_nexconn_group_id(order["society_id"])
-    if group_id:
-        msg = f"✅ Flat {order.get('flat_number', '')}'s grocery order has been confirmed."
-        await send_system_bot_message(
-            group_id,
-            msg,
-            {"type": "ai_order_event", "action": "confirmed", "order_id": order_id},
-        )
-
     return _serialize_order(updated)
 
 
@@ -413,13 +540,33 @@ async def reject_order(
     caller_user_id: str,
     caller_role: str,
 ) -> GroceryOrderResponse:
-    """Resident explicitly rejects the AI interpretation."""
+    """Resident explicitly rejects the AI interpretation.
+
+    Enforces:
+    - Only the resident owner can reject their order (allow_volunteer=False).
+    - Cannot reject an already confirmed order.
+    - Rejection is idempotent.
+    """
     orders_col = get_grocery_orders_collection()
     order = await orders_col.find_one({"_id": ObjectId(order_id)})
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
-    await _verify_order_access(order, caller_user_id, allow_volunteer=True)
+    await _verify_order_access(order, caller_user_id, allow_volunteer=False)
+
+    current_status = order.get("status")
+    if current_status == "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reject an already confirmed order.",
+        )
+    if current_status == "rejected":
+        return _serialize_order(order)
+    if current_status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reject an order that is currently processing.",
+        )
 
     now = datetime.now(timezone.utc)
     updated = await orders_col.find_one_and_update(

@@ -289,5 +289,10 @@ export const api = {
       request<ApiGroceryOrder>(`/api/orders/${orderId}/reject`, {
         method: 'POST',
       }),
+
+    retry: (orderId: string) =>
+      request<ApiGroceryOrder>(`/api/orders/${orderId}/retry`, {
+        method: 'POST',
+      }),
   },
 };

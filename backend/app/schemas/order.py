@@ -2,7 +2,7 @@
 """
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 GroceryCategory = Literal[
@@ -20,8 +20,9 @@ GroceryCategory = Literal[
 
 OrderStatus = Literal[
     "processing",
-    "needs_clarification",
+    "pending_review",
     "awaiting_confirmation",
+    "needs_clarification",
     "confirmed",
     "rejected",
     "failed",
@@ -99,10 +100,17 @@ class AIExtractionOutput(BaseModel):
 
     detected_language: str = Field("en", description="Detected language code: en, te, hi, mixed")
     items: List[GroceryItemSchema] = Field(default_factory=list, description="Extracted grocery items")
-    overall_status: Literal["awaiting_confirmation", "needs_clarification"] = Field(
-        "awaiting_confirmation", description="Overall interpretation readiness"
+    overall_status: Literal["pending_review", "awaiting_confirmation", "needs_clarification"] = Field(
+        "pending_review", description="Overall interpretation readiness"
     )
     clarification_prompt: Optional[str] = Field(None, description="Clarification question for resident if needed")
+
+    @field_validator("overall_status", mode="before")
+    @classmethod
+    def normalize_overall_status(cls, v: Any) -> str:
+        if v == "awaiting_confirmation":
+            return "pending_review"
+        return str(v)
 
 
 class ClarificationHistoryEntry(BaseModel):

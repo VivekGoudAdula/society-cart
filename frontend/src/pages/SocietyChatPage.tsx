@@ -96,7 +96,7 @@ export const SocietyChatPage: React.FC = () => {
 
   // Find most relevant order awaiting resident attention
   const activeReviewOrder = residentOrders.find(
-    (o) => o.status === 'needs_clarification' || o.status === 'awaiting_confirmation'
+    (o) => o.status === 'needs_clarification' || o.status === 'pending_review' || o.status === 'awaiting_confirmation'
   );
 
   const quickTemplates = [

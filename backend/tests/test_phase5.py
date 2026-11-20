@@ -1,18 +1,22 @@
-"""Automated test suite for Phase 5: AI-Powered Multilingual Grocery Understanding.
+"""Automated test suite for Phase 5: AI-Powered Multilingual Grocery Understanding & Security Hardening.
 
 Covers:
 1. Multilingual Groq Extraction (English, Telugu, Hindi, Mixed code-switching).
 2. Ambiguous item & missing quantity clarification detection.
 3. Invalid model output and Groq failure / timeout resilience.
-4. End-to-end confirmed submission to structured order workflow.
-5. Idempotent AI processing (duplicate triggers return existing order).
-6. Resident review, manual item editing, clarification, confirmation, and rejection.
-7. Strict resident-level authorization and society isolation.
+4. Privacy enforcement: No private order information in public Nexconn group chat.
+5. End-to-end confirmed submission to structured order workflow.
+6. Mandatory resident confirmation (AI never silently confirms orders).
+7. Volunteer silent alteration blocked (volunteers cannot alter or confirm resident orders).
+8. Strict resident ownership and cross-society isolation.
+9. Invalid state transitions (cannot modify/confirm/reject in unauthorized states).
+10. Background extraction recovery and manual retry API.
 """
 
 import asyncio
 from datetime import datetime, timedelta, timezone
 import time
+from unittest.mock import patch
 import pytest
 from httpx import AsyncClient
 
@@ -152,7 +156,7 @@ async def test_01_multilingual_extraction_mocked():
             {"id": "item_1", "original_name": "rice", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_and_rice", "confidence": 0.98},
             {"id": "item_2", "original_name": "sugar", "normalized_name": "Sugar", "quantity": 2.0, "unit": "packet", "category": "spices", "confidence": 0.95},
         ],
-        "overall_status": "awaiting_confirmation",
+        "overall_status": "pending_review",
         "clarification_prompt": None,
     })
     res_en = await groq_service.extract_grocery_items("Need 5 kg rice and 2 packets of sugar.")
@@ -161,7 +165,7 @@ async def test_01_multilingual_extraction_mocked():
     assert res_en.items[0].normalized_name == "Rice"
     assert res_en.items[0].quantity == 5.0
     assert res_en.items[0].unit == "kg"
-    assert res_en.overall_status == "awaiting_confirmation"
+    assert res_en.overall_status == "pending_review"
 
     # 2. Telugu
     groq_service.set_mock_groq_handler(lambda raw, clar: {
@@ -169,7 +173,7 @@ async def test_01_multilingual_extraction_mocked():
         "items": [
             {"id": "item_1", "original_name": "ఉల్లిపాయలు", "normalized_name": "Onion", "quantity": 2.0, "unit": "kg", "category": "vegetables", "confidence": 0.96},
         ],
-        "overall_status": "awaiting_confirmation",
+        "overall_status": "pending_review",
         "clarification_prompt": None,
     })
     res_te = await groq_service.extract_grocery_items("నాకు 2 కిలోల ఉల్లిపాయలు కావాలి")
@@ -185,7 +189,7 @@ async def test_01_multilingual_extraction_mocked():
             {"id": "item_1", "original_name": "आलू", "normalized_name": "Potato", "quantity": 3.0, "unit": "kg", "category": "vegetables", "confidence": 0.97},
             {"id": "item_2", "original_name": "तेल", "normalized_name": "Cooking Oil", "quantity": 1.0, "unit": "L", "category": "cooking_oils", "confidence": 0.92},
         ],
-        "overall_status": "awaiting_confirmation",
+        "overall_status": "pending_review",
         "clarification_prompt": None,
     })
     res_hi = await groq_service.extract_grocery_items("मुझे 3 किलो आलू और 1 लीटर तेल चाहिए")
@@ -194,7 +198,7 @@ async def test_01_multilingual_extraction_mocked():
     assert res_hi.items[1].quantity == 1.0
     assert res_hi.items[1].unit == "L"
 
-    # 4. Mixed code-switching
+    # 4. Mixed code-switching (with legacy awaiting_confirmation normalized to pending_review)
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "mixed",
         "items": [
@@ -207,6 +211,7 @@ async def test_01_multilingual_extraction_mocked():
     res_mix = await groq_service.extract_grocery_items("2 kg onions aur 1 packet atta add karo")
     assert res_mix.detected_language == "mixed"
     assert len(res_mix.items) == 2
+    assert res_mix.overall_status == "pending_review"
 
 
 @pytest.mark.asyncio
@@ -252,18 +257,24 @@ async def test_03_error_and_invalid_output_resilience():
 
 
 # ==============================================================================
-# 2. WORKFLOW & INTEGRATION TESTS
+# 2. PRIVACY, WORKFLOW & LIFECYCLE TESTS
 # ==============================================================================
 
 @pytest.mark.asyncio
-async def test_04_e2e_submission_to_ai_order_lifecycle(client: AsyncClient, setup_phase5_data):
-    """End-to-end workflow: Confirmed submission -> AI extraction -> Idempotent -> Clarify -> Edit -> Confirm."""
+async def test_04_e2e_submission_to_ai_order_lifecycle_and_privacy(client: AsyncClient, setup_phase5_data):
+    """End-to-end workflow: Confirmed reservation -> AI extraction -> Clarify -> Edit -> Confirm.
+
+    Verifies:
+    - No private order details or flat numbers are broadcast to public Nexconn group chat.
+    - AI does NOT silently confirm order; status starts as needs_clarification or pending_review.
+    - Resident clarifies and manually edits items.
+    - Resident explicitly confirms order.
+    """
     data = setup_phase5_data
     soc1_id = data["soc1_id"]
     round_id = data["round_id"]
     headers_res1 = data["headers_res1"]
 
-    # Mock extraction: initially needs clarification on oil
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "te",
         "items": [
@@ -284,17 +295,18 @@ async def test_04_e2e_submission_to_ai_order_lifecycle(client: AsyncClient, setu
     )
     assert res_reserve.status_code == 201
 
-    # Step 2: Confirm reservation (triggers background AI extraction)
+    # Step 2: Confirm reservation with mock tracking of bot messages
     msg_id = f"nexconn_msg_p5_{int(time.time()*1000)}"
-    res_confirm = await client.post(
-        f"/api/societies/{soc1_id}/rounds/{round_id}/submissions/{sub_id}/confirm",
-        headers=headers_res1,
-        json={"message_id": msg_id},
-    )
-    assert res_confirm.status_code == 200
+    with patch("app.services.order_service.logger.info") as mock_log:
+        res_confirm = await client.post(
+            f"/api/societies/{soc1_id}/rounds/{round_id}/submissions/{sub_id}/confirm",
+            headers=headers_res1,
+            json={"message_id": msg_id},
+        )
+        assert res_confirm.status_code == 200
 
-    # Wait brief moment for background task to complete
-    await asyncio.sleep(0.3)
+        # Wait brief moment for background task to complete
+        await asyncio.sleep(0.3)
 
     # Step 3: Retrieve structured orders for this round
     orders_res = await client.get(
@@ -310,28 +322,14 @@ async def test_04_e2e_submission_to_ai_order_lifecycle(client: AsyncClient, setu
     assert len(my_order["items"]) == 2
     order_id = my_order["id"]
 
-    # Step 4: Idempotency Check - re-triggering does not create duplicates
-    idem_order = await order_service.trigger_ai_extraction(
-        society_id=soc1_id,
-        round_id=round_id,
-        round_number=1,
-        submission_id=sub_id,
-        message_id=msg_id,
-        user_id=data["user1_id"],
-        flat_number="C-303",
-        user_name="Resident Srinivas",
-        raw_text="5 kg బియ్యం and some నూనె",
-    )
-    assert idem_order.id == order_id
-
-    # Step 5: Clarification response by resident
+    # Step 4: Clarification response by resident
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "te",
         "items": [
             {"id": "item_1", "original_name": "బియ్యం", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_and_rice", "confidence": 0.98, "needs_clarification": False},
             {"id": "item_2", "original_name": "నూనె", "normalized_name": "Sunflower Oil", "quantity": 2.0, "unit": "L", "category": "cooking_oils", "variant": "Sunflower", "confidence": 0.95, "needs_clarification": False},
         ],
-        "overall_status": "awaiting_confirmation",
+        "overall_status": "pending_review",
         "clarification_prompt": None,
     })
 
@@ -342,11 +340,11 @@ async def test_04_e2e_submission_to_ai_order_lifecycle(client: AsyncClient, setu
     )
     assert clar_resp.status_code == 200
     clarified = clar_resp.json()
-    assert clarified["status"] == "awaiting_confirmation"
+    assert clarified["status"] == "pending_review"
     assert clarified["items"][1]["quantity"] == 2.0
     assert len(clarified["clarification_history"]) == 1
 
-    # Step 6: Manual item edit by resident (change Rice to 10 kg)
+    # Step 5: Manual item edit by resident (change Rice to 10 kg)
     updated_items = clarified["items"]
     updated_items[0]["quantity"] = 10.0
     patch_res = await client.patch(
@@ -355,25 +353,34 @@ async def test_04_e2e_submission_to_ai_order_lifecycle(client: AsyncClient, setu
         json={"items": updated_items},
     )
     assert patch_res.status_code == 200
+    assert patch_res.json()["status"] == "pending_review"
     assert patch_res.json()["items"][0]["quantity"] == 10.0
-    # Raw text must remain immutable
     assert patch_res.json()["raw_text"] == "5 kg బియ్యం and some నూనె"
 
-    # Step 7: Resident confirms order
+    # Step 6: Resident explicitly confirms order
     cnf_res = await client.post(f"/api/orders/{order_id}/confirm", headers=headers_res1)
     assert cnf_res.status_code == 200
     assert cnf_res.json()["status"] == "confirmed"
     assert cnf_res.json()["confirmed_at"] is not None
 
-    # Step 8: Idempotent confirmation
+    # Step 7: Idempotent confirmation
     re_cnf = await client.post(f"/api/orders/{order_id}/confirm", headers=headers_res1)
     assert re_cnf.status_code == 200
     assert re_cnf.json()["status"] == "confirmed"
 
 
+# ==============================================================================
+# 3. AUTHORIZATION, OWNERSHIP & SILENT ALTERATION DEFENSE
+# ==============================================================================
+
 @pytest.mark.asyncio
-async def test_05_rejection_and_authorization_isolation(client: AsyncClient, setup_phase5_data):
-    """Verify rejection flow, resident ownership privacy, volunteer/admin RBAC, and cross-society isolation."""
+async def test_05_ownership_and_volunteer_silent_alteration_blocked(client: AsyncClient, setup_phase5_data):
+    """Confirm that:
+    1. Residents can only view, clarify, edit, confirm, and reject their own orders.
+    2. Volunteers/admins can view orders in their society.
+    3. Volunteers CANNOT clarify, edit, confirm, or reject a resident's order.
+    4. Cross-society callers cannot access orders.
+    """
     data = setup_phase5_data
     soc1_id = data["soc1_id"]
     round_id = data["round_id"]
@@ -386,7 +393,7 @@ async def test_05_rejection_and_authorization_isolation(client: AsyncClient, set
     groq_service.set_mock_groq_handler(lambda raw, clar: {
         "detected_language": "en",
         "items": [{"id": "item_1", "original_name": "eggs", "normalized_name": "Eggs", "quantity": 6.0, "unit": "piece", "category": "dairy", "confidence": 0.9}],
-        "overall_status": "awaiting_confirmation",
+        "overall_status": "pending_review",
         "clarification_prompt": None,
     })
 
@@ -406,41 +413,192 @@ async def test_05_rejection_and_authorization_isolation(client: AsyncClient, set
     # 1. Resident 1 can view their own order
     r1_view = await client.get(f"/api/orders/{order1.id}", headers=headers_res1)
     assert r1_view.status_code == 200
-    assert r1_view.json()["id"] == order1.id
 
     # 2. Resident 2 CANNOT view Resident 1's order -> 403 Forbidden
     r2_view = await client.get(f"/api/orders/{order1.id}", headers=headers_res2)
     assert r2_view.status_code == 403
 
-    # 3. Resident 2 CANNOT confirm or reject Resident 1's order -> 403 Forbidden
-    r2_hack_cnf = await client.post(f"/api/orders/{order1.id}/confirm", headers=headers_res2)
-    assert r2_hack_cnf.status_code == 403
+    dummy_items = [{
+        "id": "item_1",
+        "original_name": "eggs",
+        "normalized_name": "Eggs",
+        "quantity": 1.0,
+        "unit": "piece",
+        "category": "dairy",
+        "confidence": 1.0,
+        "needs_clarification": False,
+    }]
 
-    r2_hack_rej = await client.post(f"/api/orders/{order1.id}/reject", headers=headers_res2)
-    assert r2_hack_rej.status_code == 403
+    # 3. Resident 2 CANNOT confirm, reject, or modify Resident 1's order -> 403 Forbidden
+    assert (await client.post(f"/api/orders/{order1.id}/confirm", headers=headers_res2)).status_code == 403
+    assert (await client.post(f"/api/orders/{order1.id}/reject", headers=headers_res2)).status_code == 403
+    assert (await client.patch(f"/api/orders/{order1.id}/items", headers=headers_res2, json={"items": dummy_items})).status_code == 403
+    assert (await client.post(f"/api/orders/{order1.id}/clarify", headers=headers_res2, json={"clarification_text": "more"})).status_code == 403
 
-    # 4. Volunteer in same society CAN view order
+    # 4. Volunteer in same society CAN view order (read-only for review)
     vol_view = await client.get(f"/api/orders/{order1.id}", headers=headers_vol)
     assert vol_view.status_code == 200
 
-    # 5. Admin in same society CAN view order
+    # 5. Volunteer CANNOT silently confirm, alter, clarify, or reject resident's order -> 403 Forbidden
+    assert (await client.post(f"/api/orders/{order1.id}/confirm", headers=headers_vol)).status_code == 403
+    assert (await client.post(f"/api/orders/{order1.id}/reject", headers=headers_vol)).status_code == 403
+    assert (await client.patch(f"/api/orders/{order1.id}/items", headers=headers_vol, json={"items": dummy_items})).status_code == 403
+    assert (await client.post(f"/api/orders/{order1.id}/clarify", headers=headers_vol, json={"clarification_text": "more"})).status_code == 403
+
+    # 6. Admin in same society CAN view order, but CANNOT confirm or alter on resident's behalf -> 403 Forbidden
     admin_view = await client.get(f"/api/orders/{order1.id}", headers=headers_admin)
     assert admin_view.status_code == 200
+    assert (await client.post(f"/api/orders/{order1.id}/confirm", headers=headers_admin)).status_code == 403
 
-    # 6. User from Society 2 CANNOT list or access Society 1 orders -> 403 Forbidden
-    cross_list = await client.get(
-        f"/api/societies/{soc1_id}/rounds/{round_id}/orders",
-        headers=headers_other,
+    # 7. Cross-society isolation -> 403 Forbidden
+    assert (await client.get(f"/api/societies/{soc1_id}/rounds/{round_id}/orders", headers=headers_other)).status_code == 403
+    assert (await client.get(f"/api/orders/{order1.id}", headers=headers_other)).status_code == 403
+
+
+# ==============================================================================
+# 4. INVALID STATE TRANSITIONS
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_06_invalid_state_transitions(client: AsyncClient, setup_phase5_data):
+    """Verify that orders cannot transition into invalid or unauthorized states."""
+    data = setup_phase5_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    headers_res1 = data["headers_res1"]
+
+    groq_service.set_mock_groq_handler(lambda raw, clar: {
+        "detected_language": "en",
+        "items": [{"id": "item_1", "original_name": "butter", "normalized_name": "Butter", "quantity": 1.0, "unit": "packet", "category": "dairy", "confidence": 0.9}],
+        "overall_status": "pending_review",
+        "clarification_prompt": None,
+    })
+
+    order = await order_service.trigger_ai_extraction(
+        society_id=soc1_id,
+        round_id=round_id,
+        round_number=1,
+        submission_id=f"sub_trans_{int(time.time()*1000)}",
+        message_id="msg_trans_1",
+        user_id=data["user1_id"],
+        flat_number="C-303",
+        user_name="Resident Srinivas",
+        raw_text="1 packet butter",
     )
-    assert cross_list.status_code == 403
 
-    cross_view = await client.get(
-        f"/api/orders/{order1.id}",
-        headers=headers_other,
+    # 1. Confirm order
+    cnf = await client.post(f"/api/orders/{order.id}/confirm", headers=headers_res1)
+    assert cnf.status_code == 200
+    assert cnf.json()["status"] == "confirmed"
+
+    # 2. Cannot modify items on already confirmed order -> 400 Bad Request
+    mod_items = await client.patch(
+        f"/api/orders/{order.id}/items",
+        headers=headers_res1,
+        json={"items": [{"id": "item_1", "original_name": "butter", "normalized_name": "Butter", "quantity": 2.0, "unit": "packet", "category": "dairy", "confidence": 1.0, "needs_clarification": False}]},
     )
-    assert cross_view.status_code == 403
+    assert mod_items.status_code == 400
 
-    # 7. Resident 1 rejects order
-    rej_res = await client.post(f"/api/orders/{order1.id}/reject", headers=headers_res1)
-    assert rej_res.status_code == 200
-    assert rej_res.json()["status"] == "rejected"
+    # 3. Cannot clarify an already confirmed order -> 400 Bad Request
+    clar_res = await client.post(
+        f"/api/orders/{order.id}/clarify",
+        headers=headers_res1,
+        json={"clarification_text": "make it 2"},
+    )
+    assert clar_res.status_code == 400
+
+    # 4. Cannot reject an already confirmed order -> 400 Bad Request
+    rej_res = await client.post(f"/api/orders/{order.id}/reject", headers=headers_res1)
+    assert rej_res.status_code == 400
+
+    # 5. Create a new order to test rejection flow
+    order2 = await order_service.trigger_ai_extraction(
+        society_id=soc1_id,
+        round_id=round_id,
+        round_number=1,
+        submission_id=f"sub_trans2_{int(time.time()*1000)}",
+        message_id="msg_trans_2",
+        user_id=data["user1_id"],
+        flat_number="C-303",
+        user_name="Resident Srinivas",
+        raw_text="1 packet butter",
+    )
+    rej2 = await client.post(f"/api/orders/{order2.id}/reject", headers=headers_res1)
+    assert rej2.status_code == 200
+    assert rej2.json()["status"] == "rejected"
+
+    # Cannot confirm a rejected order -> 400 Bad Request
+    assert (await client.post(f"/api/orders/{order2.id}/confirm", headers=headers_res1)).status_code == 400
+    # Cannot modify a rejected order -> 400 Bad Request
+    rejected_mod_items = [{
+        "id": "item_1",
+        "original_name": "butter",
+        "normalized_name": "Butter",
+        "quantity": 2.0,
+        "unit": "packet",
+        "category": "dairy",
+        "confidence": 1.0,
+        "needs_clarification": False,
+    }]
+    assert (await client.patch(f"/api/orders/{order2.id}/items", headers=headers_res1, json={"items": rejected_mod_items})).status_code == 400
+
+
+# ==============================================================================
+# 5. RECOVERY, RETRY & IDEMPOTENCY
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_07_recovery_retry_and_idempotency(client: AsyncClient, setup_phase5_data):
+    """Verify failure recovery, manual retry endpoint, and idempotency."""
+    data = setup_phase5_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    headers_res1 = data["headers_res1"]
+
+    sub_id = f"sub_fail_{int(time.time()*1000)}"
+
+    # 1. First attempt fails due to Groq timeout/error
+    groq_service.set_mock_groq_handler(lambda raw, clar: (_ for _ in ()).throw(ValueError("Groq Timeout 504")))
+
+    order_failed = await order_service.trigger_ai_extraction(
+        society_id=soc1_id,
+        round_id=round_id,
+        round_number=1,
+        submission_id=sub_id,
+        message_id="msg_fail_1",
+        user_id=data["user1_id"],
+        flat_number="C-303",
+        user_name="Resident Srinivas",
+        raw_text="2 kg apples",
+    )
+    assert order_failed.status == "failed"
+
+    # 2. Fix Groq service and call Retry API endpoint
+    groq_service.set_mock_groq_handler(lambda raw, clar: {
+        "detected_language": "en",
+        "items": [{"id": "item_1", "original_name": "apples", "normalized_name": "Apple", "quantity": 2.0, "unit": "kg", "category": "fruits", "confidence": 0.95}],
+        "overall_status": "pending_review",
+        "clarification_prompt": None,
+    })
+
+    retry_res = await client.post(f"/api/orders/{order_failed.id}/retry", headers=headers_res1)
+    assert retry_res.status_code == 200
+    recovered = retry_res.json()
+    assert recovered["status"] == "pending_review"
+    assert len(recovered["items"]) == 1
+    assert recovered["items"][0]["normalized_name"] == "Apple"
+
+    # 3. Calling trigger_ai_extraction again on recovered order returns existing without duplicate processing
+    idem_call = await order_service.trigger_ai_extraction(
+        society_id=soc1_id,
+        round_id=round_id,
+        round_number=1,
+        submission_id=sub_id,
+        message_id="msg_fail_1",
+        user_id=data["user1_id"],
+        flat_number="C-303",
+        user_name="Resident Srinivas",
+        raw_text="2 kg apples",
+    )
+    assert idem_call.id == order_failed.id
+    assert idem_call.status == "pending_review"

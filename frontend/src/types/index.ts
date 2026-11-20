@@ -207,8 +207,9 @@ export interface ApiGrocerySubmission {
 
 export type ApiOrderStatus =
   | 'processing'
-  | 'needs_clarification'
+  | 'pending_review'
   | 'awaiting_confirmation'
+  | 'needs_clarification'
   | 'confirmed'
   | 'rejected'
   | 'failed';
