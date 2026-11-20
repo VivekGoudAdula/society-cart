@@ -202,6 +202,8 @@ class GroceryOrderResponse(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     confirmed_at: Optional[datetime] = Field(None, description="Resident confirmation timestamp")
     recovery_attempts: int = Field(0, description="Number of recovery attempts following server restarts")
+    processing_lease_id: Optional[str] = Field(None, description="Active lease ID if currently processing")
+    processing_lease_until: Optional[datetime] = Field(None, description="Lease expiration timestamp")
 
 
 class ClarifyOrderRequest(BaseModel):

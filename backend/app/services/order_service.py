@@ -4,6 +4,7 @@
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, Dict, List, Optional
+import uuid
 from bson import ObjectId
 from fastapi import HTTPException, status
 from pymongo import ReturnDocument
@@ -71,6 +72,8 @@ def _serialize_order(doc: Dict[str, Any]) -> GroceryOrderResponse:
         updated_at=_ensure_utc(doc.get("updated_at", datetime.now(timezone.utc))),
         confirmed_at=_ensure_utc(doc.get("confirmed_at")),
         recovery_attempts=int(doc.get("recovery_attempts", 0)),
+        processing_lease_id=doc.get("processing_lease_id"),
+        processing_lease_until=_ensure_utc(doc.get("processing_lease_until")),
     )
 
 
@@ -136,6 +139,9 @@ async def trigger_ai_extraction(
     now = datetime.now(timezone.utc)
 
     # 1. Idempotency & Recovery Check
+    lease_id = uuid.uuid4().hex
+    lease_until = now + timedelta(seconds=120)
+
     existing = await orders_col.find_one({"submission_id": submission_id})
     if existing:
         completed_statuses = (
@@ -153,10 +159,35 @@ async def trigger_ai_extraction(
             )
             return _serialize_order(existing)
 
-        # Existing record is in 'processing' or 'failed'; resume/recover
-        order_doc = existing
+        # Existing record is in 'processing' or 'failed'; atomically claim lease if available
+        claimed = await orders_col.find_one_and_update(
+            {
+                "_id": existing["_id"],
+                "status": {"$in": ["processing", "failed"]},
+                "$or": [
+                    {"processing_lease_until": None},
+                    {"processing_lease_until": {"$lte": now}},
+                ],
+            },
+            {
+                "$set": {
+                    "status": "processing",
+                    "processing_lease_id": lease_id,
+                    "processing_lease_until": lease_until,
+                    "updated_at": now,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if not claimed:
+            logger.info(
+                "Order %s has an active lease held by another worker. Returning current document.",
+                existing["_id"],
+            )
+            return _serialize_order(existing)
+        order_doc = claimed
     else:
-        # 2. Persist initial 'processing' record
+        # 2. Persist initial 'processing' record with active lease
         order_doc = {
             "society_id": society_id,
             "round_id": round_id,
@@ -178,6 +209,8 @@ async def trigger_ai_extraction(
             "updated_at": now,
             "confirmed_at": None,
             "recovery_attempts": 0,
+            "processing_lease_id": lease_id,
+            "processing_lease_until": lease_until,
         }
 
         try:
@@ -195,16 +228,43 @@ async def trigger_ai_extraction(
                     "rejected",
                 ):
                     return _serialize_order(existing)
-                order_doc = existing
+                # Claim lease on raced document
+                claimed = await orders_col.find_one_and_update(
+                    {
+                        "_id": existing["_id"],
+                        "status": {"$in": ["processing", "failed"]},
+                        "$or": [
+                            {"processing_lease_until": None},
+                            {"processing_lease_until": {"$lte": now}},
+                        ],
+                    },
+                    {
+                        "$set": {
+                            "status": "processing",
+                            "processing_lease_id": lease_id,
+                            "processing_lease_until": lease_until,
+                            "updated_at": now,
+                        }
+                    },
+                    return_document=ReturnDocument.AFTER,
+                )
+                if not claimed:
+                    return _serialize_order(existing)
+                order_doc = claimed
             else:
                 raise
 
-    # 3. Call Groq AI service with bounded failure handling
+    # 3. Call Groq AI service with bounded failure handling & verify lease before writing
+    current_lease_id = order_doc.get("processing_lease_id", lease_id)
     try:
         ai_output: AIExtractionOutput = await groq_service.extract_grocery_items(raw_text)
 
         updated = await orders_col.find_one_and_update(
-            {"_id": order_doc["_id"]},
+            {
+                "_id": order_doc["_id"],
+                "status": "processing",
+                "processing_lease_id": current_lease_id,
+            },
             {
                 "$set": {
                     "detected_language": ai_output.detected_language,
@@ -212,50 +272,80 @@ async def trigger_ai_extraction(
                     "status": ai_output.overall_status,
                     "clarification_prompt": ai_output.clarification_prompt,
                     "error_message": None,
+                    "processing_lease_id": None,
+                    "processing_lease_until": None,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
             return_document=ReturnDocument.AFTER,
         )
+        if not updated:
+            logger.warning(
+                "Lease %s expired or was preempted for order %s. Result write discarded.",
+                current_lease_id,
+                order_doc["_id"],
+            )
+            latest = await orders_col.find_one({"_id": order_doc["_id"]})
+            return _serialize_order(latest or order_doc)
         return _serialize_order(updated)
 
     except Exception as ai_exc:
         logger.error("AI extraction error for submission %s: %s", submission_id, ai_exc)
-        # Safe failure update: record failure without invalidating or corrupting original submission
+        # Safe failure update: record failure only if lease is still owned
         failed = await orders_col.find_one_and_update(
-            {"_id": order_doc["_id"]},
+            {
+                "_id": order_doc["_id"],
+                "status": "processing",
+                "processing_lease_id": current_lease_id,
+            },
             {
                 "$set": {
                     "status": "failed",
                     "error_message": str(ai_exc),
+                    "processing_lease_id": None,
+                    "processing_lease_until": None,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
             return_document=ReturnDocument.AFTER,
         )
+        if not failed:
+            latest = await orders_col.find_one({"_id": order_doc["_id"]})
+            return _serialize_order(latest or order_doc)
         return _serialize_order(failed)
 
 
 async def recover_stale_processing_orders(
     timeout_seconds: int = 120,
     max_recovery_attempts: int = 3,
+    stale_threshold_seconds: Optional[int] = None,
 ) -> int:
     """Scan and recover orders stuck in 'processing' status beyond timeout_seconds.
 
-    Atomic claim:
-    - Identifies orders where status == 'processing' and updated_at <= cutoff.
-    - Atomically increments recovery_attempts and updates updated_at.
+    Exclusive Atomic Lease Mechanism:
+    - Identifies orders where status == 'processing' and lease has expired (or was never set).
+    - Exclusively acquires lease via atomic find_one_and_update with processing_lease_id and processing_lease_until.
     - If recovery_attempts exceeds max_recovery_attempts, atomically marks as 'failed'.
-    - Otherwise re-runs Groq extraction and transitions to 'pending_review' or 'needs_clarification'.
+    - Re-runs Groq extraction and commits results ONLY if current worker still holds the lease.
+    - If lease expired during extraction, result write is safely skipped to avoid overwriting newer workers.
     - Preserves submission and prevents duplicate order creation.
     """
+    if stale_threshold_seconds is not None:
+        timeout_seconds = stale_threshold_seconds
+
     orders_col = get_grocery_orders_collection()
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=timeout_seconds)
 
     cursor = orders_col.find({
         "status": "processing",
-        "updated_at": {"$lte": cutoff},
+        "$or": [
+            {"processing_lease_until": {"$lte": now}},
+            {
+                "processing_lease_until": None,
+                "updated_at": {"$lte": cutoff},
+            },
+        ],
     })
     candidate_orders = await cursor.to_list(length=100)
     recovered_count = 0
@@ -266,41 +356,67 @@ async def recover_stale_processing_orders(
 
         if attempts >= max_recovery_attempts:
             await orders_col.update_one(
-                {"_id": order_id, "status": "processing"},
+                {
+                    "_id": order_id,
+                    "status": "processing",
+                    "$or": [
+                        {"processing_lease_until": {"$lte": now}},
+                        {"processing_lease_until": None},
+                    ],
+                },
                 {
                     "$set": {
                         "status": "failed",
                         "error_message": f"Processing timed out after {attempts} attempts following backend restart.",
+                        "processing_lease_id": None,
+                        "processing_lease_until": None,
                         "updated_at": datetime.now(timezone.utc),
                     }
                 },
             )
             continue
 
-        # Atomic claim: only claim if status is STILL 'processing'
+        # Exclusive atomic claim: only claim if order is still 'processing' and lease is unowned or expired
+        recovery_lease_id = uuid.uuid4().hex
+        recovery_lease_until = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+
         claimed = await orders_col.find_one_and_update(
             {
                 "_id": order_id,
                 "status": "processing",
+                "$or": [
+                    {"processing_lease_until": {"$lte": datetime.now(timezone.utc)}},
+                    {
+                        "processing_lease_until": None,
+                        "updated_at": {"$lte": cutoff},
+                    },
+                ],
             },
             {
                 "$inc": {"recovery_attempts": 1},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
+                "$set": {
+                    "processing_lease_id": recovery_lease_id,
+                    "processing_lease_until": recovery_lease_until,
+                    "updated_at": datetime.now(timezone.utc),
+                },
             },
             return_document=ReturnDocument.AFTER,
         )
 
         if not claimed:
+            # Another worker claimed it first or order state changed
             continue
 
         try:
             raw_text = claimed.get("raw_text", "")
             ai_output = await groq_service.extract_grocery_items(raw_text)
 
-            await orders_col.find_one_and_update(
+            # Atomic write-back: verify our recovery lease is still active before writing results
+            updated = await orders_col.find_one_and_update(
                 {
                     "_id": order_id,
                     "status": "processing",
+                    "processing_lease_id": recovery_lease_id,
                 },
                 {
                     "$set": {
@@ -309,21 +425,52 @@ async def recover_stale_processing_orders(
                         "status": ai_output.overall_status,
                         "clarification_prompt": ai_output.clarification_prompt,
                         "error_message": None,
+                        "processing_lease_id": None,
+                        "processing_lease_until": None,
                         "updated_at": datetime.now(timezone.utc),
                     }
                 },
+                return_document=ReturnDocument.AFTER,
             )
-            recovered_count += 1
-            logger.info("Successfully recovered stale order %s to status %s", order_id, ai_output.overall_status)
+            if updated:
+                recovered_count += 1
+                logger.info("Successfully recovered stale order %s to status %s", order_id, ai_output.overall_status)
+            else:
+                logger.warning(
+                    "Recovery lease %s expired for order %s before write. Overwrite prevented.",
+                    recovery_lease_id,
+                    order_id,
+                )
         except Exception as exc:
             logger.error("Failed to recover stale order %s: %s", order_id, exc)
             if attempts + 1 >= max_recovery_attempts:
                 await orders_col.update_one(
-                    {"_id": order_id, "status": "processing"},
+                    {
+                        "_id": order_id,
+                        "status": "processing",
+                        "processing_lease_id": recovery_lease_id,
+                    },
                     {
                         "$set": {
                             "status": "failed",
                             "error_message": f"Extraction failed during recovery: {exc}",
+                            "processing_lease_id": None,
+                            "processing_lease_until": None,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
+                )
+            else:
+                # Expire the lease immediately so subsequent attempts can pick it up without waiting out the timeout
+                await orders_col.update_one(
+                    {
+                        "_id": order_id,
+                        "status": "processing",
+                        "processing_lease_id": recovery_lease_id,
+                    },
+                    {
+                        "$set": {
+                            "processing_lease_until": datetime.now(timezone.utc),
                             "updated_at": datetime.now(timezone.utc),
                         }
                     },
@@ -354,18 +501,46 @@ async def retry_ai_extraction(
             detail=f"Cannot retry extraction for an order in '{order['status']}' state.",
         )
 
-    # Mark as processing
-    await orders_col.update_one(
-        {"_id": order["_id"]},
-        {"$set": {"status": "processing", "updated_at": datetime.now(timezone.utc)}},
+    # Atomic lease claim: mark as processing with exclusive lease if not actively leased
+    lease_id = uuid.uuid4().hex
+    lease_until = datetime.now(timezone.utc) + timedelta(seconds=120)
+
+    claimed = await orders_col.find_one_and_update(
+        {
+            "_id": order["_id"],
+            "status": {"$nin": ["confirmed", "rejected"]},
+            "$or": [
+                {"status": {"$ne": "processing"}},
+                {"processing_lease_until": None},
+                {"processing_lease_until": {"$lte": datetime.now(timezone.utc)}},
+            ],
+        },
+        {
+            "$set": {
+                "status": "processing",
+                "processing_lease_id": lease_id,
+                "processing_lease_until": lease_until,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+        return_document=ReturnDocument.AFTER,
     )
+    if not claimed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Order is currently being processed by another worker.",
+        )
 
     try:
-        raw_text = order.get("raw_text", "")
+        raw_text = claimed.get("raw_text", "")
         ai_output: AIExtractionOutput = await groq_service.extract_grocery_items(raw_text)
 
         updated = await orders_col.find_one_and_update(
-            {"_id": order["_id"]},
+            {
+                "_id": claimed["_id"],
+                "status": "processing",
+                "processing_lease_id": lease_id,
+            },
             {
                 "$set": {
                     "detected_language": ai_output.detected_language,
@@ -373,26 +548,40 @@ async def retry_ai_extraction(
                     "status": ai_output.overall_status,
                     "clarification_prompt": ai_output.clarification_prompt,
                     "error_message": None,
+                    "processing_lease_id": None,
+                    "processing_lease_until": None,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
             return_document=ReturnDocument.AFTER,
         )
+        if not updated:
+            latest = await orders_col.find_one({"_id": claimed["_id"]})
+            return _serialize_order(latest or claimed)
         return _serialize_order(updated)
 
     except Exception as exc:
         logger.error("Retry extraction failed for order %s: %s", order_id, exc)
         failed = await orders_col.find_one_and_update(
-            {"_id": order["_id"]},
+            {
+                "_id": claimed["_id"],
+                "status": "processing",
+                "processing_lease_id": lease_id,
+            },
             {
                 "$set": {
                     "status": "failed",
                     "error_message": str(exc),
+                    "processing_lease_id": None,
+                    "processing_lease_until": None,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
             return_document=ReturnDocument.AFTER,
         )
+        if not failed:
+            latest = await orders_col.find_one({"_id": claimed["_id"]})
+            return _serialize_order(latest or claimed)
         return _serialize_order(failed)
 
 

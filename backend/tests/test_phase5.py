@@ -737,3 +737,251 @@ async def test_08_automatic_restart_recovery_and_atomic_claim(client: AsyncClien
     bounded_failed_order = await orders_col.find_one({"submission_id": sub_fail_bound})
     assert bounded_failed_order["status"] == "failed"
 
+
+@pytest.mark.asyncio
+async def test_09_recovery_concurrency_and_lease_ownership(setup_phase5_data):
+    """Verify exclusive atomic worker claiming, active lease protection, and late-write rejection.
+
+    Scenarios:
+    1. Simultaneous Worker Claims: Two workers race to claim the same processing order; exactly one succeeds.
+    2. Active Lease Protection: An order with a valid active lease is skipped by recovery.
+    3. Expired Lease Recovery: An order with an expired lease is successfully claimed and recovered.
+    4. Stale Worker Late-Write Rejection: A worker that lost its lease cannot overwrite results produced by a newer worker.
+    5. Terminal States Immutability: Orders in 'pending_review', 'confirmed', or 'rejected' are never claimed or modified.
+    """
+    import asyncio
+    from pymongo import ReturnDocument
+    from app.core.database import get_grocery_orders_collection
+
+    data = setup_phase5_data
+    soc1_id = data["soc1_id"]
+    round_id = data["round_id"]
+    orders_col = get_grocery_orders_collection()
+    now = datetime.now(timezone.utc)
+
+    # --------------------------------------------------------------------------
+    # Scenario 1: Simultaneous Worker Claims (Atomic Lease Acquisition Race)
+    # --------------------------------------------------------------------------
+    sub_sim = f"sub_sim_{int(time.time()*1000)}"
+    sim_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_sim,
+        "message_id": "msg_sim",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "2 kg tomatoes",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "created_at": now - timedelta(minutes=5),
+        "updated_at": now - timedelta(minutes=5),
+        "recovery_attempts": 0,
+        "processing_lease_id": None,
+        "processing_lease_until": None,
+    }
+    inserted = await orders_col.insert_one(sim_doc)
+    order_id = inserted.inserted_id
+
+    lease_worker_1 = "worker_1_lease"
+    lease_worker_2 = "worker_2_lease"
+
+    async def attempt_claim(worker_lease_id: str):
+        return await orders_col.find_one_and_update(
+            {
+                "_id": order_id,
+                "status": "processing",
+                "$or": [
+                    {"processing_lease_until": {"$lte": datetime.now(timezone.utc)}},
+                    {"processing_lease_until": None},
+                ],
+            },
+            {
+                "$inc": {"recovery_attempts": 1},
+                "$set": {
+                    "processing_lease_id": worker_lease_id,
+                    "processing_lease_until": datetime.now(timezone.utc) + timedelta(seconds=120),
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+    # Both workers attempt to claim simultaneously
+    res1, res2 = await asyncio.gather(attempt_claim(lease_worker_1), attempt_claim(lease_worker_2))
+
+    # Exactly one worker wins the lease, the other receives None
+    assert (res1 is not None and res2 is None) or (res1 is None and res2 is not None)
+    winner_lease = res1["processing_lease_id"] if res1 else res2["processing_lease_id"]
+    assert winner_lease in (lease_worker_1, lease_worker_2)
+
+    # --------------------------------------------------------------------------
+    # Scenario 2: Active Lease Protection (Recovery Skips Active Lease)
+    # --------------------------------------------------------------------------
+    sub_active = f"sub_act_{int(time.time()*1000)}"
+    active_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_active,
+        "message_id": "msg_active",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "1 liter milk",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "created_at": now,
+        "updated_at": now,
+        "recovery_attempts": 0,
+        "processing_lease_id": "active_worker_token",
+        "processing_lease_until": now + timedelta(minutes=5),  # Lease active for 5 more minutes
+    }
+    await orders_col.insert_one(active_doc)
+
+    # Running recovery must skip this order because its lease is currently active
+    recovered = await order_service.recover_stale_processing_orders(timeout_seconds=60)
+    skipped_order = await orders_col.find_one({"submission_id": sub_active})
+    assert skipped_order["status"] == "processing"
+    assert skipped_order["processing_lease_id"] == "active_worker_token"
+
+    # --------------------------------------------------------------------------
+    # Scenario 3: Expired Lease Recovery
+    # --------------------------------------------------------------------------
+    sub_expired = f"sub_exp_{int(time.time()*1000)}"
+    expired_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_expired,
+        "message_id": "msg_exp",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "3 kg potatoes",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "created_at": now - timedelta(minutes=10),
+        "updated_at": now - timedelta(minutes=10),
+        "recovery_attempts": 0,
+        "processing_lease_id": "dead_worker_token",
+        "processing_lease_until": now - timedelta(minutes=8),  # Expired 8 minutes ago
+    }
+    await orders_col.insert_one(expired_doc)
+
+    groq_service.set_mock_groq_handler(lambda raw, clar: {
+        "detected_language": "en",
+        "items": [
+            {"id": "item_1", "original_name": "potatoes", "normalized_name": "Potato", "quantity": 3.0, "unit": "kg", "category": "vegetables", "confidence": 0.95}
+        ],
+        "overall_status": "pending_review",
+        "clarification_prompt": None,
+    })
+
+    # Recovery claims and processes the expired lease order
+    recovered_count = await order_service.recover_stale_processing_orders(timeout_seconds=60)
+    assert recovered_count >= 1
+
+    exp_rec = await orders_col.find_one({"submission_id": sub_expired})
+    assert exp_rec["status"] == "pending_review"
+    assert len(exp_rec["items"]) == 1
+    assert exp_rec["items"][0]["normalized_name"] == "Potato"
+    assert exp_rec["processing_lease_id"] is None  # Lease cleaned up upon completion
+
+    # --------------------------------------------------------------------------
+    # Scenario 4: Stale Worker Late-Write Rejection (No Overwrite)
+    # --------------------------------------------------------------------------
+    sub_preempt = f"sub_preempt_{int(time.time()*1000)}"
+    preempt_doc = {
+        "society_id": soc1_id,
+        "round_id": round_id,
+        "round_number": 1,
+        "submission_id": sub_preempt,
+        "message_id": "msg_preempt",
+        "user_id": data["user1_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Srinivas",
+        "raw_text": "1 kg onions",
+        "detected_language": "en",
+        "items": [],
+        "status": "processing",
+        "created_at": now - timedelta(minutes=10),
+        "updated_at": now - timedelta(minutes=10),
+        "recovery_attempts": 0,
+        "processing_lease_id": "worker_A_stale_lease",
+        "processing_lease_until": now - timedelta(minutes=5),  # Worker A lease expired
+    }
+    preempt_res = await orders_col.insert_one(preempt_doc)
+    preempt_id = preempt_res.inserted_id
+
+    # Worker B comes in, claims the expired lease and writes its output
+    worker_B_lease = "worker_B_valid_lease"
+    await orders_col.update_one(
+        {"_id": preempt_id},
+        {
+            "$set": {
+                "processing_lease_id": worker_B_lease,
+                "processing_lease_until": now + timedelta(minutes=2),
+                "items": [{"id": "item_b", "original_name": "onions", "normalized_name": "Onion (Worker B)", "quantity": 1.0, "unit": "kg", "category": "vegetables", "confidence": 1.0}],
+                "status": "pending_review",
+            }
+        },
+    )
+
+    # Worker A now attempts late-write using its old stale lease token
+    late_write = await orders_col.find_one_and_update(
+        {
+            "_id": preempt_id,
+            "status": "processing",
+            "processing_lease_id": "worker_A_stale_lease",
+        },
+        {
+            "$set": {
+                "items": [{"id": "item_a", "original_name": "onions", "normalized_name": "Onion (Worker A Overwrite)", "quantity": 10.0, "unit": "kg", "category": "vegetables", "confidence": 0.5}],
+                "status": "pending_review",
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+
+    # Stale write MUST be rejected (returns None) and Worker B's result must remain intact
+    assert late_write is None
+    intact_order = await orders_col.find_one({"_id": preempt_id})
+    assert intact_order["items"][0]["normalized_name"] == "Onion (Worker B)"
+
+    # --------------------------------------------------------------------------
+    # Scenario 5: Terminal States Immutability
+    # --------------------------------------------------------------------------
+    for term_status in ("pending_review", "confirmed", "rejected"):
+        term_sub = f"sub_term_{term_status}_{int(time.time()*1000)}"
+        await orders_col.insert_one({
+            "society_id": soc1_id,
+            "round_id": round_id,
+            "round_number": 1,
+            "submission_id": term_sub,
+            "message_id": f"msg_{term_status}",
+            "user_id": data["user1_id"],
+            "flat_number": "C-303",
+            "user_name": "Resident Srinivas",
+            "raw_text": "5 kg rice",
+            "detected_language": "en",
+            "items": [{"id": "i1", "original_name": "rice", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_rice", "confidence": 1.0}],
+            "status": term_status,
+            "created_at": now - timedelta(days=1),
+            "updated_at": now - timedelta(days=1),
+            "recovery_attempts": 0,
+        })
+
+    # Run aggressive recovery with 0 timeout
+    await order_service.recover_stale_processing_orders(timeout_seconds=0)
+
+    for term_status in ("pending_review", "confirmed", "rejected"):
+        term_doc = await orders_col.find_one({"status": term_status, "raw_text": "5 kg rice"})
+        assert term_doc is not None
+        assert term_doc["status"] == term_status
+
+
