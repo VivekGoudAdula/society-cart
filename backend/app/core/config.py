@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     nexconn_app_secret: str = ""
     nexconn_api_base_url: str = "https://api-sg01.ronghub.com"
     groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_timeout_seconds: float = 30.0
+    groq_max_retries: int = 2
 
     @property
     def is_production(self) -> bool:

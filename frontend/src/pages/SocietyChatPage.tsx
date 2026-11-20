@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send,
   Sparkles,
@@ -11,15 +11,20 @@ import {
   AlertCircle,
   ShoppingCart,
   Lock,
+  Eye,
+  HelpCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
 import { Avatar } from '../components/common/Avatar';
 import { Badge } from '../components/common/Badge';
+import { OrderReviewModal } from '../components/orders/OrderReviewModal';
+import { ApiGroceryOrder } from '../types';
+import { api } from '../services/api';
 
 /**
  * Screen 5: Society Chat Screen — Conversational interface backed by real-time Nexconn Group Chat.
- * Residents post grocery needs and receive confirmations in real time.
+ * Residents post grocery needs and receive AI interpretations and confirmations in real time.
  */
 export const SocietyChatPage: React.FC = () => {
   const { currentUser, society, activeRound, isAuthenticated } = useApp();
@@ -30,6 +35,26 @@ export const SocietyChatPage: React.FC = () => {
   const [asGroceryOrder, setAsGroceryOrder] = useState(true);
   const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Phase 5: Structured AI Orders state
+  const [residentOrders, setResidentOrders] = useState<ApiGroceryOrder[]>([]);
+  const [selectedOrderForReview, setSelectedOrderForReview] = useState<ApiGroceryOrder | null>(null);
+
+  const fetchOrders = useCallback(async () => {
+    if (!society?.id || !activeRound?.id || !isAuthenticated) return;
+    try {
+      const orders = await api.orders.listByRound(society.id, activeRound.id);
+      setResidentOrders(orders);
+    } catch {
+      // Background poll failure is silent
+    }
+  }, [society?.id, activeRound?.id, isAuthenticated]);
+
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 8000);
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -56,8 +81,23 @@ export const SocietyChatPage: React.FC = () => {
     if (!res.success) {
       setInputMessage(sentText);
       setSendError(res.error || 'Failed to deliver message to Nexconn channel. Please try again.');
+    } else {
+      // Trigger order refresh after sending
+      setTimeout(fetchOrders, 2500);
     }
   };
+
+  const handleOrderUpdated = (updated: ApiGroceryOrder) => {
+    setResidentOrders((prev) =>
+      prev.map((o) => (o.id === updated.id ? updated : o))
+    );
+    setSelectedOrderForReview(updated);
+  };
+
+  // Find most relevant order awaiting resident attention
+  const activeReviewOrder = residentOrders.find(
+    (o) => o.status === 'needs_clarification' || o.status === 'awaiting_confirmation'
+  );
 
   const quickTemplates = [
     '5 kg sona masoori rice and 2 litre sunflower oil',
@@ -146,6 +186,37 @@ export const SocietyChatPage: React.FC = () => {
             </span>
           </div>
           <span className="text-[11px] font-semibold text-slate-500">Wait for next round</span>
+        </div>
+      )}
+
+      {/* 2.1 Phase 5: AI Order Review / Clarification Action Banner */}
+      {activeReviewOrder && (
+        <div
+          className={`px-4 py-2.5 border-b flex items-center justify-between gap-3 text-xs animate-fade-in ${
+            activeReviewOrder.status === 'needs_clarification'
+              ? 'bg-amber-500 text-white font-medium border-amber-600'
+              : 'bg-emerald-700 text-white font-medium border-emerald-800'
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            {activeReviewOrder.status === 'needs_clarification' ? (
+              <HelpCircle className="h-4 w-4 shrink-0 animate-bounce" />
+            ) : (
+              <Sparkles className="h-4 w-4 shrink-0 text-emerald-200" />
+            )}
+            <span className="truncate">
+              {activeReviewOrder.status === 'needs_clarification'
+                ? `Clarification needed on your grocery order: "${activeReviewOrder.clarification_prompt || 'Unspecified item/qty'}"`
+                : `AI has parsed ${activeReviewOrder.items.length} items from your request! Confirmation required.`}
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedOrderForReview(activeReviewOrder)}
+            className="shrink-0 px-3 py-1 bg-white text-gray-900 rounded-lg font-bold text-[11px] hover:bg-gray-100 transition-colors shadow-xs flex items-center gap-1.5"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>{activeReviewOrder.status === 'needs_clarification' ? 'Clarify Now' : 'Review & Confirm'}</span>
+          </button>
         </div>
       )}
 
@@ -378,6 +449,14 @@ export const SocietyChatPage: React.FC = () => {
           </div>
         </div>
       </form>
+
+      {/* Phase 5: Structured Order Review Modal */}
+      <OrderReviewModal
+        order={selectedOrderForReview}
+        isOpen={!!selectedOrderForReview}
+        onClose={() => setSelectedOrderForReview(null)}
+        onOrderUpdated={handleOrderUpdated}
+      />
     </div>
   );
 };

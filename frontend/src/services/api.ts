@@ -6,6 +6,8 @@ import {
   ApiOrderRound,
   ApiRoundListResponse,
   ApiGrocerySubmission,
+  ApiGroceryOrder,
+  ApiGroceryOrderItem,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -257,5 +259,35 @@ export const api = {
 
     getSubmissions: (societyId: string, roundId: string) =>
       request<ApiGrocerySubmission[]>(`/api/societies/${societyId}/rounds/${roundId}/submissions`),
+  },
+
+  orders: {
+    listByRound: (societyId: string, roundId: string) =>
+      request<ApiGroceryOrder[]>(`/api/societies/${societyId}/rounds/${roundId}/orders`),
+
+    getById: (orderId: string) =>
+      request<ApiGroceryOrder>(`/api/orders/${orderId}`),
+
+    clarify: (orderId: string, clarificationText: string) =>
+      request<ApiGroceryOrder>(`/api/orders/${orderId}/clarify`, {
+        method: 'POST',
+        body: JSON.stringify({ clarification_text: clarificationText }),
+      }),
+
+    updateItems: (orderId: string, items: ApiGroceryOrderItem[]) =>
+      request<ApiGroceryOrder>(`/api/orders/${orderId}/items`, {
+        method: 'PATCH',
+        body: JSON.stringify({ items }),
+      }),
+
+    confirm: (orderId: string) =>
+      request<ApiGroceryOrder>(`/api/orders/${orderId}/confirm`, {
+        method: 'POST',
+      }),
+
+    reject: (orderId: string) =>
+      request<ApiGroceryOrder>(`/api/orders/${orderId}/reject`, {
+        method: 'POST',
+      }),
   },
 };

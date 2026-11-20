@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Dict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, societies, users, chat, rounds
+from app.api import auth, societies, users, chat, rounds, orders
 from app.core.config import get_settings
 from app.core.database import close_mongo_connection, connect_to_mongo
 from app.services.round_scheduler import start_round_scheduler, stop_round_scheduler
@@ -46,6 +46,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(societies.router, prefix="/api")
 app.include_router(rounds.router, prefix="/api")
+app.include_router(orders.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 
 

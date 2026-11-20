@@ -745,6 +745,26 @@ async def confirm_submission(
             detail="Failed to confirm reservation. Current status may not be 'reserved'.",
         )
 
+    # Phase 5: Trigger asynchronous background AI grocery extraction
+    try:
+        import asyncio
+        from app.services import order_service
+        asyncio.create_task(
+            order_service.trigger_ai_extraction(
+                society_id=society_id,
+                round_id=round_id,
+                round_number=int(updated.get("round_number", 1)),
+                submission_id=submission_id,
+                message_id=data.message_id,
+                user_id=str(updated["user_id"]),
+                flat_number=str(updated.get("flat_number", "")),
+                user_name=str(updated.get("user_name", "Resident")),
+                raw_text=str(updated["raw_text"]),
+            )
+        )
+    except Exception as bg_exc:
+        logger.warning("Could not launch background AI extraction task: %s", bg_exc)
+
     return _serialize_submission(updated)
 
 

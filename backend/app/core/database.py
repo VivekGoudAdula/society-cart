@@ -185,6 +185,32 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             partialFilterExpression={"message_id": {"$type": "string"}},
             name="idx_submissions_message_id_unique",
         )
+
+        # Grocery Orders Collection (Structured AI Interpretations):
+        # 1. Strict 1:1 mapping between submission and structured order - prevents duplicate AI processing
+        await db.grocery_orders.create_index(
+            [("submission_id", ASCENDING)],
+            unique=True,
+            name="idx_orders_submission_unique",
+        )
+
+        # 2. Scope orders by society and round
+        await db.grocery_orders.create_index(
+            [("society_id", ASCENDING), ("round_id", ASCENDING)],
+            name="idx_orders_society_round",
+        )
+
+        # 3. Fast resident lookup within round
+        await db.grocery_orders.create_index(
+            [("round_id", ASCENDING), ("user_id", ASCENDING)],
+            name="idx_orders_round_user",
+        )
+
+        # 4. Status lookup for pending confirmations
+        await db.grocery_orders.create_index(
+            [("user_id", ASCENDING), ("status", ASCENDING)],
+            name="idx_orders_user_status",
+        )
     except Exception as exc:
         logger.warning("Database index check: %s", exc)
 
@@ -239,3 +265,8 @@ def get_order_rounds_collection() -> AsyncCollection:
 def get_grocery_submissions_collection() -> AsyncCollection:
     """Return the grocery_submissions collection."""
     return get_database().grocery_submissions
+
+
+def get_grocery_orders_collection() -> AsyncCollection:
+    """Return the grocery_orders collection for structured AI interpretations."""
+    return get_database().grocery_orders

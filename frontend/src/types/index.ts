@@ -204,3 +204,54 @@ export interface ApiGrocerySubmission {
   confirmed_at?: string;
   created_at: string;
 }
+
+export type ApiOrderStatus =
+  | 'processing'
+  | 'needs_clarification'
+  | 'awaiting_confirmation'
+  | 'confirmed'
+  | 'rejected'
+  | 'failed';
+
+export interface ApiGroceryOrderItem {
+  id: string;
+  original_name: string;
+  normalized_name: string;
+  quantity: number | null;
+  unit: string | null;
+  category: string;
+  brand?: string | null;
+  variant?: string | null;
+  confidence: number;
+  needs_clarification: boolean;
+  clarification_reason?: string | null;
+}
+
+export interface ClarificationHistoryItem {
+  prompt: string;
+  resident_response: string;
+  timestamp: string;
+}
+
+export interface ApiGroceryOrder {
+  id: string;
+  society_id: string;
+  round_id: string;
+  round_number: number;
+  submission_id: string;
+  message_id: string;
+  user_id: string;
+  flat_number: string;
+  user_name: string;
+  raw_text: string;
+  detected_language: string;
+  items: ApiGroceryOrderItem[];
+  status: ApiOrderStatus;
+  clarification_prompt?: string | null;
+  clarification_history: ClarificationHistoryItem[];
+  ai_model: string;
+  prompt_version: string;
+  created_at: string;
+  updated_at: string;
+  confirmed_at?: string | null;
+}

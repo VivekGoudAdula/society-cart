@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageSquare,
@@ -13,6 +13,7 @@ import {
   BellRing,
   Sparkles,
   Layers,
+  Eye,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PageHeader } from '../components/common/PageHeader';
@@ -20,6 +21,9 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
+import { OrderReviewModal } from '../components/orders/OrderReviewModal';
+import { ApiGroceryOrder } from '../types';
+import { api } from '../services/api';
 
 /**
  * Screen 3: Resident Dashboard — Primary home for apartment residents to track orders, deadlines, and savings.
@@ -27,6 +31,17 @@ import { StatCard } from '../components/common/StatCard';
 export const ResidentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, society, activeRound, notifications, residentBill } = useApp();
+
+  const [orders, setOrders] = useState<ApiGroceryOrder[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<ApiGroceryOrder | null>(null);
+
+  useEffect(() => {
+    if (!society?.id || !activeRound?.id) return;
+    api.orders
+      .listByRound(society.id, activeRound.id)
+      .then((res) => setOrders(res))
+      .catch(() => {});
+  }, [society?.id, activeRound?.id]);
 
   return (
     <div className="space-y-6">
@@ -145,6 +160,68 @@ export const ResidentDashboard: React.FC = () => {
         </div>
       </Card>
 
+      {/* Phase 5: Active AI Parsed Orders Card (if any pending confirmation or clarification) */}
+      {orders.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-[#18231E] flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <span>AI-Interpreted Orders ({orders.length})</span>
+            </h3>
+            <span className="text-xs text-[#718078]">Click to review, clarify, or confirm</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {orders.map((ord) => (
+              <Card
+                key={ord.id}
+                hoverable
+                onClick={() => setSelectedOrder(ord)}
+                className={`p-4 transition-all ${
+                  ord.status === 'needs_clarification'
+                    ? 'border-amber-300 bg-amber-50/30'
+                    : ord.status === 'awaiting_confirmation'
+                    ? 'border-emerald-300 bg-emerald-50/20'
+                    : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-900 truncate">
+                        Round #{ord.round_number}
+                      </span>
+                      <Badge
+                        size="sm"
+                        variant={
+                          ord.status === 'confirmed'
+                            ? 'success'
+                            : ord.status === 'needs_clarification'
+                            ? 'warning'
+                            : 'primary'
+                        }
+                      >
+                        {ord.status.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-gray-600 italic mt-1 truncate max-w-sm">
+                      "{ord.raw_text}"
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      {ord.items.length} items extracted • {ord.detected_language.toUpperCase()}
+                    </p>
+                  </div>
+
+                  <Button size="sm" variant="outline" leftIcon={<Eye className="w-3.5 h-3.5" />}>
+                    Review
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Quick Statistics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -260,6 +337,17 @@ export const ResidentDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Phase 5: Order Review Modal */}
+      <OrderReviewModal
+        order={selectedOrder}
+        isOpen={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onOrderUpdated={(updated) => {
+          setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+          setSelectedOrder(updated);
+        }}
+      />
     </div>
   );
 };
