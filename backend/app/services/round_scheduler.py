@@ -1,4 +1,4 @@
-"""Background scheduler for automatic deadline enforcement on active grocery rounds.
+"""Background scheduler for automatic deadline enforcement and announcement recovery.
 """
 
 import asyncio
@@ -14,6 +14,93 @@ from app.services.nexconn_service import send_system_bot_message
 logger = logging.getLogger(__name__)
 
 _scheduler_task: Optional[asyncio.Task] = None
+
+
+async def dispatch_opening_announcement(
+    round_id: ObjectId,
+    society_id: str,
+    round_number: int,
+    title: str,
+    deadline_at: datetime,
+    shopping_date: str,
+    current_attempts: int = 0,
+) -> bool:
+    """Safely dispatch opening announcement and update structured delivery status."""
+    try:
+        db = get_database()
+        rounds_col = db.order_rounds
+        soc = await get_societies_collection().find_one({"_id": ObjectId(society_id)})
+        group_id = soc.get("nexconn_group_id") if soc else f"society_{society_id}"
+
+        deadline_str = deadline_at.strftime("%d %b %Y, %I:%M %p UTC") if hasattr(deadline_at, "strftime") else str(deadline_at)
+        announcement_text = (
+            f"🛒 Grocery Round #{round_number} is now OPEN!\n\n"
+            f"Submit your grocery requirements before {deadline_str}.\n\n"
+            f"Shopping date: {shopping_date}.\n\n"
+            f"Please send your items in the society chat."
+        )
+        extra = {
+            "type": "round_event",
+            "action": "open",
+            "round_id": str(round_id),
+            "round_number": round_number,
+            "title": title,
+            "deadline_at": deadline_at.isoformat() if hasattr(deadline_at, "isoformat") else str(deadline_at),
+            "shopping_date": shopping_date,
+        }
+
+        attempt_time = datetime.now(timezone.utc)
+        attempts = current_attempts + 1
+
+        sent = await send_system_bot_message(group_id, announcement_text, extra)
+        if sent:
+            await rounds_col.update_one(
+                {"_id": round_id},
+                {
+                    "$set": {
+                        "opening_announcement.status": "sent",
+                        "opening_announcement.attempts": attempts,
+                        "opening_announcement.last_attempt_at": attempt_time,
+                        "opening_announcement.sent_at": attempt_time,
+                        "opening_announcement.last_error": None,
+                        "opening_announcement_sent": True,
+                    }
+                },
+            )
+            return True
+        else:
+            await rounds_col.update_one(
+                {"_id": round_id},
+                {
+                    "$set": {
+                        "opening_announcement.status": "failed",
+                        "opening_announcement.attempts": attempts,
+                        "opening_announcement.last_attempt_at": attempt_time,
+                        "opening_announcement.last_error": "Nexconn returned unsuccessful response",
+                        "opening_announcement_sent": False,
+                    }
+                },
+            )
+            return False
+    except Exception as exc:
+        logger.warning("Error dispatching opening announcement for round %s: %s", round_id, exc)
+        try:
+            db = get_database()
+            await db.order_rounds.update_one(
+                {"_id": round_id},
+                {
+                    "$set": {
+                        "opening_announcement.status": "failed",
+                        "opening_announcement.attempts": current_attempts + 1,
+                        "opening_announcement.last_attempt_at": datetime.now(timezone.utc),
+                        "opening_announcement.last_error": str(exc),
+                        "opening_announcement_sent": False,
+                    }
+                },
+            )
+        except Exception:
+            pass
+        return False
 
 
 async def dispatch_closing_announcement(
@@ -41,7 +128,7 @@ async def dispatch_closing_announcement(
             "action": "close",
             "round_id": str(round_id),
             "round_number": round_number,
-            "closed_at": closed_at.isoformat(),
+            "closed_at": closed_at.isoformat() if hasattr(closed_at, "isoformat") else str(closed_at),
             "is_automatic": is_automatic,
         }
 
@@ -100,9 +187,10 @@ async def dispatch_closing_announcement(
 
 
 async def check_expired_rounds_once() -> int:
-    """Find and automatically close any open grocery rounds whose deadlines have expired.
+    """Find and automatically close open grocery rounds whose deadlines have expired.
 
-    Also retries pending closing announcements on previously closed rounds.
+    Also performs atomic recovery with bounded retries for pending or failed
+    opening and closing announcements.
 
     Returns:
         int: Number of rounds transitioned to closed.
@@ -137,7 +225,7 @@ async def check_expired_rounds_once() -> int:
         society_id = round_doc["society_id"]
         round_number = round_doc.get("round_number", 1)
 
-        # Atomic update strictly on status=open to prevent duplicate closures or worker races
+        # Atomic update strictly on status=open prevents duplicate closures or worker races
         updated = await rounds_col.find_one_and_update(
             {"_id": round_id, "status": "open"},
             {
@@ -170,7 +258,50 @@ async def check_expired_rounds_once() -> int:
                 current_attempts=0,
             )
 
-    # Retry any pending or failed closing announcements (up to 3 attempts)
+    # 1. Recover pending or failed opening announcements on open rounds (bounded to 3 attempts)
+    open_retry_cursor = rounds_col.find({
+        "status": "open",
+        "opening_announcement.status": {"$in": ["pending", "failed"]},
+        "opening_announcement.attempts": {"$lt": 3},
+    })
+    open_retry_rounds = await open_retry_cursor.to_list(length=20)
+    for o_doc in open_retry_rounds:
+        o_id = o_doc["_id"]
+        soc_id = o_doc["society_id"]
+        o_num = o_doc.get("round_number", 1)
+        o_title = o_doc.get("title", f"Round #{o_num}")
+        o_deadline = o_doc.get("deadline_at")
+        o_shop_date = str(o_doc.get("shopping_date", ""))
+        o_attempts = int(o_doc.get("opening_announcement", {}).get("attempts", 0))
+
+        # Atomic claim to prevent multi-worker duplicate retries
+        claimed_open = await rounds_col.find_one_and_update(
+            {
+                "_id": o_id,
+                "status": "open",
+                "opening_announcement.status": {"$in": ["pending", "failed"]},
+                "opening_announcement.attempts": o_attempts,
+            },
+            {
+                "$set": {
+                    "opening_announcement.status": "pending",
+                    "opening_announcement.last_attempt_at": now,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if claimed_open:
+            await dispatch_opening_announcement(
+                round_id=o_id,
+                society_id=soc_id,
+                round_number=o_num,
+                title=o_title,
+                deadline_at=o_deadline,
+                shopping_date=o_shop_date,
+                current_attempts=o_attempts,
+            )
+
+    # 2. Recover pending or failed closing announcements on closed rounds (bounded to 3 attempts)
     retry_cursor = rounds_col.find({
         "status": "closed",
         "closing_announcement.status": {"$in": ["pending", "failed"]},
