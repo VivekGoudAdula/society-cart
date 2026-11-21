@@ -135,136 +135,122 @@ export const WelcomePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#252824] selection:bg-[#174D3A] selection:text-white flex flex-col justify-between">
       {/* ------------------------------------------------------------------- */}
-      {/* 1. FLOATING ROUNDED RECTANGLE NAVBAR (WITH TOP GAP) */}
+      {/* HERO SECTION (16:9 FULLSCREEN RESPONSIVE HERO WITH BG.PNG) */}
       {/* ------------------------------------------------------------------- */}
-      <div className="sticky top-3 sm:top-5 z-40 w-full px-4 sm:px-6 lg:px-8">
-        <header className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md rounded-2xl sm:rounded-full border border-[#EBE8DF] shadow-md px-5 sm:px-7 py-3 transition-all">
-          <div className="flex items-center justify-between">
-            {/* Left: Brand Identity */}
-            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#174D3A] text-white shadow-xs">
-                <ShoppingCart className="h-4 w-4" />
-              </div>
-              <span className="text-lg sm:text-xl font-bold tracking-tight text-[#18181b]">
-                Society Cart
-              </span>
-            </div>
-
-            {/* Center Navigation Links (Desktop) */}
-            <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#4B5563]">
-              <a href="#how-it-works" className="hover:text-[#18181b] transition-colors">
-                How It Works
-              </a>
-              <a href="#community" className="hover:text-[#18181b] transition-colors">
-                Residents
-              </a>
-              <a href="#community" className="hover:text-[#18181b] transition-colors">
-                Volunteers
-              </a>
-            </nav>
-
-            {/* Right Action CTAs */}
-            <div className="hidden md:flex items-center gap-2.5">
-              <button
-                onClick={() => handleOpenAuth('login')}
-                className="text-sm font-semibold text-[#4B5563] hover:text-[#18181b] px-4 py-2 rounded-full transition-colors"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => handleOpenAuth('register')}
-                className="rounded-full bg-[#18181b] hover:bg-black text-white px-5 py-2 text-sm font-medium transition-all shadow-xs"
-              >
-                Create a Society
-              </button>
-            </div>
-
-            {/* Mobile Hamburger Toggle */}
-            <div className="flex md:hidden items-center gap-2">
-              <button
-                onClick={() => handleOpenAuth('login')}
-                className="text-xs font-semibold text-[#18181b] px-2.5 py-1"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="p-1.5 text-[#252824] rounded-lg hover:bg-[#F3F0E8] transition-colors"
-                aria-label="Toggle navigation menu"
-              >
-                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Mobile Dropdown Menu */}
-          {mobileMenuOpen && (
-            <div className="md:hidden pt-4 pb-2 mt-3 border-t border-[#EBE8DF] space-y-3">
-              <nav className="flex flex-col space-y-2 text-sm font-semibold text-[#252824]">
-                <a
-                  href="#how-it-works"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="py-1 text-[#4B5563] hover:text-[#18181b]"
-                >
-                  How It Works
-                </a>
-                <a
-                  href="#community"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="py-1 text-[#4B5563] hover:text-[#18181b]"
-                >
-                  Residents & Volunteers
-                </a>
-                <a
-                  href="#trust"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="py-1 text-[#4B5563] hover:text-[#18181b]"
-                >
-                  Trust & Privacy
-                </a>
-              </nav>
-              <div className="pt-2 border-t border-[#EBE8DF]">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    handleOpenAuth('register');
-                  }}
-                  className="w-full rounded-full bg-[#18181b] hover:bg-black text-white py-2 text-sm font-semibold transition-all shadow-xs"
-                >
-                  Create a Society
-                </button>
-              </div>
-            </div>
-          )}
-        </header>
-      </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* 2. HERO SECTION (16:9 PROPORTIONED, TASTEFUL TOP & BOTTOM EDGE BLEND) */}
-      {/* ------------------------------------------------------------------- */}
-      <section className="relative overflow-hidden min-h-[calc(100vh-6rem)] flex flex-col justify-center py-6 sm:py-8">
-        {/* Background sunset & apartment image: bg.png */}
+      <section className="relative w-full min-h-screen flex flex-col justify-between overflow-hidden">
+        {/* Full 16:9 Background Image: bg.png (100% visible, crisp, no cloudy overlays) */}
         <div
           className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
           style={{
             backgroundImage: "url('/bg.png')",
-            backgroundPosition: 'center 45%',
           }}
         />
 
-        {/* Top subtle sky-blue atmosphere fade: keeps the natural blue dusk sky tone intact */}
-        <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-gradient-to-b from-[#96B3C8]/35 via-[#96B3C8]/10 to-transparent pointer-events-none z-0" />
+        {/* 1. FLOATING ROUNDED NAVBAR */}
+        <div className="w-full pt-4 sm:pt-6 px-4 sm:px-6 lg:px-8 z-30">
+          <header className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md rounded-2xl sm:rounded-full border border-[#EBE8DF] shadow-md px-5 sm:px-7 py-3 transition-all">
+            <div className="flex items-center justify-between">
+              {/* Left: Brand Identity */}
+              <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#174D3A] text-white shadow-xs">
+                  <ShoppingCart className="h-4 w-4" />
+                </div>
+                <span className="text-lg sm:text-xl font-bold tracking-tight text-[#18181b]">
+                  Society Cart
+                </span>
+              </div>
 
-        {/* Bottom minimal fade: low height to gently soften the bottom edge without covering buildings */}
-        <div className="absolute inset-x-0 bottom-0 h-12 sm:h-16 bg-gradient-to-t from-[#FAF9F6] to-transparent pointer-events-none z-0" />
+              {/* Center Navigation Links (Desktop) */}
+              <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#4B5563]">
+                <a href="#how-it-works" className="hover:text-[#18181b] transition-colors">
+                  How It Works
+                </a>
+                <a href="#community" className="hover:text-[#18181b] transition-colors">
+                  Residents
+                </a>
+                <a href="#community" className="hover:text-[#18181b] transition-colors">
+                  Volunteers
+                </a>
+              </nav>
 
-        {/* Top subtle sky-blue atmosphere fade: keeps the natural blue dusk sky tone intact */}
-        <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-gradient-to-b from-[#96B3C8]/35 via-[#96B3C8]/10 to-transparent pointer-events-none z-0" />
+              {/* Right Action CTAs */}
+              <div className="hidden md:flex items-center gap-2.5">
+                <button
+                  onClick={() => handleOpenAuth('login')}
+                  className="text-sm font-semibold text-[#4B5563] hover:text-[#18181b] px-4 py-2 rounded-full transition-colors"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => handleOpenAuth('register')}
+                  className="rounded-full bg-[#18181b] hover:bg-black text-white px-5 py-2 text-sm font-medium transition-all shadow-xs"
+                >
+                  Create a Society
+                </button>
+              </div>
 
-        {/* Bottom minimal fade: low height to gently soften the bottom edge without covering buildings */}
-        <div className="absolute inset-x-0 bottom-0 h-12 sm:h-16 bg-gradient-to-t from-[#FAF9F6] to-transparent pointer-events-none z-0" />
+              {/* Mobile Hamburger Toggle */}
+              <div className="flex md:hidden items-center gap-2">
+                <button
+                  onClick={() => handleOpenAuth('login')}
+                  className="text-xs font-semibold text-[#18181b] px-2.5 py-1"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="p-1.5 text-[#252824] rounded-lg hover:bg-[#F3F0E8] transition-colors"
+                  aria-label="Toggle navigation menu"
+                >
+                  {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
 
-        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center my-auto">
+            {/* Mobile Dropdown Menu */}
+            {mobileMenuOpen && (
+              <div className="md:hidden pt-4 pb-2 mt-3 border-t border-[#EBE8DF] space-y-3">
+                <nav className="flex flex-col space-y-2 text-sm font-semibold text-[#252824]">
+                  <a
+                    href="#how-it-works"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="py-1 text-[#4B5563] hover:text-[#18181b]"
+                  >
+                    How It Works
+                  </a>
+                  <a
+                    href="#community"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="py-1 text-[#4B5563] hover:text-[#18181b]"
+                  >
+                    Residents & Volunteers
+                  </a>
+                  <a
+                    href="#trust"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="py-1 text-[#4B5563] hover:text-[#18181b]"
+                  >
+                    Trust & Privacy
+                  </a>
+                </nav>
+                <div className="pt-2 border-t border-[#EBE8DF]">
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      handleOpenAuth('register');
+                    }}
+                    className="w-full rounded-full bg-[#18181b] hover:bg-black text-white py-2 text-sm font-semibold transition-all shadow-xs"
+                  >
+                    Create a Society
+                  </button>
+                </div>
+              </div>
+            )}
+          </header>
+        </div>
+
+        {/* 2. HERO HEADLINE & FLOATING CARDS */}
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center my-auto py-6 sm:py-8">
           {/* Main Headline with Sans & Italic Serif Contrast */}
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#18181b] leading-[1.12] max-w-4xl mx-auto">
             Your Society. One Chat.
@@ -279,9 +265,7 @@ export const WelcomePage: React.FC = () => {
             chat. AI structures every order so volunteers buy once in bulk.
           </p>
 
-          {/* --------------------------------------------------------------- */}
           {/* 3 FLOATING INTERACTIVE HERO PREVIEWS (MATCHING REFERENCE IMAGE) */}
-          {/* --------------------------------------------------------------- */}
           <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-center gap-4 sm:gap-5 max-w-4xl mx-auto">
             {/* Card 1: Resident Ordering on Laptop */}
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-[#E2EEE8] to-[#CFE2D8] border border-white/80 shadow-lg p-3 flex flex-col justify-end items-center relative overflow-hidden backdrop-blur-xs shrink-0">
@@ -323,7 +307,7 @@ export const WelcomePage: React.FC = () => {
                   <span className="text-[10px] font-semibold text-[#6B7280]">Resident</span>
                 </div>
                 <div className="rounded-2xl rounded-tl-sm bg-white/95 p-3 shadow-xs border border-white/90 text-xs font-medium text-[#18181b] leading-relaxed">
-                  5 kg rice, 2L milk, 2 kg kandipappu kavali
+                  5 kg rice, 2L milk, 2 kg కందిపప్పు కావాలి, 1 kg आटा
                 </div>
               </div>
 
@@ -405,12 +389,15 @@ export const WelcomePage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Seamless blend into Section 2: dissolves cleanly into Section 2 background without any harsh line */}
+        <div className="absolute inset-x-0 bottom-0 h-24 sm:h-32 bg-gradient-to-t from-[#F6F4EF] via-[#F6F4EF]/50 to-transparent pointer-events-none z-10" />
       </section>
 
       {/* ------------------------------------------------------------------- */}
       {/* 3. SECTION 1 — HOW IT WORKS */}
       {/* ------------------------------------------------------------------- */}
-      <section id="how-it-works" className="py-20 sm:py-28 bg-[#F3F0E8]/50 border-y border-[#EBE8DF]">
+      <section id="how-it-works" className="py-20 sm:py-28 bg-[#F6F4EF] border-b border-[#EBE8DF]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <span className="text-xs font-bold tracking-widest uppercase text-[#174D3A] bg-[#EBF2EE] px-3.5 py-1 rounded-full border border-[#174D3A]/15">
