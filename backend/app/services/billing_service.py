@@ -8,7 +8,8 @@ verified retail benchmark evidence, and transparent savings analysis.
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Dict, List, Optional, Set, Tuple
 from bson import ObjectId
 from fastapi import HTTPException, status
 
@@ -441,6 +442,265 @@ async def delete_purchase(
 # 2. Purchase-to-Order Matching & Cost Allocation Engine
 # ============================================================================
 
+PRODUCT_SYNONYMS: Dict[str, str] = {
+    # Atta / Flour variants & transliterations
+    "aata": "atta",
+    "aatha": "atta",
+    "aattah": "atta",
+    "flour": "atta",
+    "wheatflour": "atta",
+    "godhumapindi": "atta",
+    # Brand transliterations
+    "ashirvad": "aashirvaad",
+    "ashirwaad": "aashirvaad",
+    "aashirwad": "aashirvaad",
+    # Rice transliterations
+    "chawal": "rice",
+    "biyyam": "rice",
+    "biyyapu": "rice",
+    # Oil transliterations
+    "tel": "oil",
+    "thailam": "oil",
+    "nune": "oil",
+    "sunfloweroil": "sunflower",
+    # Dairy transliterations
+    "doodh": "milk",
+    "paalu": "milk",
+    "panir": "paneer",
+    "makhan": "butter",
+    "venna": "butter",
+    "neyyi": "ghee",
+    # Vegetables & Staples
+    "onions": "onion",
+    "pyaz": "onion",
+    "ulli": "onion",
+    "ullipayalu": "onion",
+    "potatoes": "potato",
+    "aloo": "potato",
+    "alu": "potato",
+    "bangaladumpa": "potato",
+    "tomatoes": "tomato",
+    "tamatar": "tomato",
+    "cheeni": "sugar",
+    "chini": "sugar",
+    "panchadara": "sugar",
+    "chai": "tea",
+    # Pulses / Dals
+    "toordal": "toor dal",
+    "tuvar": "toor dal",
+    "tuvardal": "toor dal",
+    "kandipappu": "toor dal",
+    "moongdal": "moong dal",
+    "mung": "moong dal",
+    "pesara": "moong dal",
+    "pesarapappu": "moong dal",
+    "uraddal": "urad dal",
+    "minapappu": "urad dal",
+    "chanadal": "chana dal",
+}
+
+COMPOUND_PHRASES: Dict[str, str] = {
+    "sun flower": "sunflower",
+    "wheat flour": "atta",
+    "sona masuri": "sona masoori",
+    "sonamasoori": "sona masoori",
+    "sonamasuri": "sona masoori",
+    "toor dal": "toor dal",
+    "tuvar dal": "toor dal",
+    "kandi pappu": "toor dal",
+}
+
+DISCRETE_UNIT_MAP: Dict[str, str] = {
+    "packet": "packet",
+    "packets": "packet",
+    "pkt": "packet",
+    "pkts": "packet",
+    "pack": "packet",
+    "packs": "packet",
+    "pouch": "packet",
+    "pouches": "packet",
+    "piece": "piece",
+    "pieces": "piece",
+    "pc": "piece",
+    "pcs": "piece",
+    "bottle": "bottle",
+    "bottles": "bottle",
+    "box": "box",
+    "boxes": "box",
+}
+
+MASS_KG_UNITS = {"kg", "kilogram", "kilograms", "kgs"}
+MASS_G_UNITS = {"g", "gram", "grams", "gm", "gms"}
+VOL_L_UNITS = {"l", "litre", "litres", "liter", "liters", "ltr", "ltrs"}
+VOL_ML_UNITS = {"ml", "millilitre", "millilitres", "milliliter"}
+
+
+def _canonicalize_unit(unit: Optional[str]) -> str:
+    """Normalize unit string to canonical representation."""
+    if not unit:
+        return "item"
+    raw = unit.strip().lower()
+    if raw in MASS_KG_UNITS:
+        return "kg"
+    if raw in MASS_G_UNITS:
+        return "g"
+    if raw in VOL_L_UNITS:
+        return "l"
+    if raw in VOL_ML_UNITS:
+        return "ml"
+    return DISCRETE_UNIT_MAP.get(raw, raw)
+
+
+def are_units_compatible(u1: Optional[str], u2: Optional[str]) -> Tuple[bool, float]:
+    """Check if two units are compatible and return the conversion factor.
+    
+    Returns:
+        (is_compatible, factor): multiply quantity in u2 by factor to get quantity in u1.
+    """
+    n1 = _canonicalize_unit(u1)
+    n2 = _canonicalize_unit(u2)
+    if n1 == n2:
+        return True, 1.0
+    if n1 == "kg" and n2 == "g":
+        return True, 0.001
+    if n1 == "g" and n2 == "kg":
+        return True, 1000.0
+    if n1 == "l" and n2 == "ml":
+        return True, 0.001
+    if n1 == "ml" and n2 == "l":
+        return True, 1000.0
+    return False, 0.0
+
+
+def extract_product_tokens(*texts: Optional[str]) -> Set[str]:
+    """Extract, normalize, and expand tokens for fuzzy/spelling product matching."""
+    combined = " ".join(t for t in texts if t).lower()
+    combined = re.sub(r"[^a-z0-9\s]", " ", combined)
+    combined = re.sub(r"\s+", " ", combined).strip()
+    for comp, repl in COMPOUND_PHRASES.items():
+        combined = re.sub(r"\b" + re.escape(comp) + r"\b", repl, combined)
+
+    tokens: Set[str] = set()
+    for w in combined.split():
+        canon = PRODUCT_SYNONYMS.get(w, w)
+        if len(canon) > 3 and canon.endswith("s") and not canon.endswith("ss"):
+            canon = PRODUCT_SYNONYMS.get(canon[:-1], canon[:-1])
+        for subw in canon.split():
+            tokens.add(subw)
+    return tokens
+
+
+def compute_product_match_score(req_tokens: Set[str], p_tokens: Set[str]) -> float:
+    """Compute semantic token similarity between requested and purchased product."""
+    if not req_tokens or not p_tokens:
+        return 0.0
+    intersection = req_tokens & p_tokens
+    if not intersection:
+        return 0.0
+    jaccard = len(intersection) / len(req_tokens | p_tokens)
+    recall = len(intersection) / len(req_tokens)
+    # Give priority to full recall (all requested tokens matched)
+    if recall == 1.0:
+        return 0.9 + 0.1 * jaccard
+    return (jaccard + recall) / 2.0
+
+
+def _match_all_purchases_to_manifest(
+    all_manifest_items: List[Any],
+    purchases: List[Dict[str, Any]],
+) -> Dict[str, List[Tuple[Dict[str, Any], float, bool, Optional[str]]]]:
+    """Match all recorded purchases to compiled manifest items.
+    
+    Returns:
+        Mapping from item_key to list of tuples: (purchase_doc, unit_factor, is_sub, sub_note).
+    """
+    manifest_match_map: Dict[str, List[Tuple[Dict[str, Any], float, bool, Optional[str]]]] = {
+        it.item_key: [] for it in all_manifest_items
+    }
+    item_by_key = {it.item_key: it for it in all_manifest_items}
+
+    # Pre-extract manifest item tokens
+    manifest_tokens: Dict[str, Set[str]] = {}
+    for it in all_manifest_items:
+        orig_names = getattr(it, "original_names", []) or []
+        manifest_tokens[it.item_key] = extract_product_tokens(
+            it.normalized_name, it.brand, it.variant, *orig_names
+        )
+
+    for p in purchases:
+        # Check explicit substitution first
+        if p.get("is_substitution"):
+            sub_for_name = (p.get("substitute_for_item_name") or "").strip().lower()
+            sub_for_brand = (p.get("substitute_for_brand") or "").strip().lower()
+            sub_for_variant = (p.get("substitute_for_variant") or "").strip().lower()
+            sub_matched_key = None
+            sub_factor = 1.0
+
+            for it in all_manifest_items:
+                compat, factor = are_units_compatible(it.unit, p.get("unit"))
+                if not compat:
+                    continue
+                req_norm = it.normalized_name.strip().lower()
+                req_brand = (it.brand or "").strip().lower()
+                req_variant = (it.variant or "").strip().lower()
+                if (
+                    sub_for_name == req_norm
+                    and (not sub_for_brand or sub_for_brand == req_brand)
+                    and (not sub_for_variant or sub_for_variant == req_variant)
+                ):
+                    sub_matched_key = it.item_key
+                    sub_factor = factor
+                    break
+
+            if sub_matched_key:
+                note = f"Substituted with {p.get('item_name')} ({p.get('brand') or 'standard'})"
+                manifest_match_map[sub_matched_key].append((p, sub_factor, True, note))
+                continue
+
+        # Standard / Token / Transliteration matching
+        p_tokens = extract_product_tokens(
+            p.get("item_name"), p.get("normalized_name"), p.get("brand"), p.get("variant")
+        )
+        best_score = 0.0
+        best_key = None
+        best_factor = 1.0
+
+        for it in all_manifest_items:
+            compat, factor = are_units_compatible(it.unit, p.get("unit"))
+            if not compat:
+                continue
+
+            r_tokens = manifest_tokens[it.item_key]
+            score = compute_product_match_score(r_tokens, p_tokens)
+
+            # Boost exact normalized name and brand matches
+            p_raw_name = (p.get("item_name") or "").strip().lower()
+            p_norm_name = (p.get("normalized_name") or "").strip().lower()
+            it_name = it.normalized_name.strip().lower()
+            if p_raw_name == it_name or p_norm_name == it_name:
+                score += 0.2
+
+            if score > best_score:
+                best_score = score
+                best_key = it.item_key
+                best_factor = factor
+
+        # Minimum confidence threshold (0.60) ensures high accuracy
+        if best_score >= 0.60 and best_key:
+            manifest_match_map[best_key].append((p, best_factor, False, None))
+            logger.info(
+                "Matched purchase '%s' to manifest item '%s' (score=%.2f, factor=%.2f)",
+                p.get("item_name"), item_by_key[best_key].normalized_name, best_score, best_factor
+            )
+        else:
+            logger.warning(
+                "Purchase record '%s' (unit=%s) could not be matched with high confidence (best_score=%.2f)",
+                p.get("item_name"), p.get("unit"), best_score
+            )
+
+    return manifest_match_map
+
+
 def _match_purchase_to_requested(
     item_norm_name: str,
     item_category: str,
@@ -449,53 +709,36 @@ def _match_purchase_to_requested(
     item_unit: str,
     purchases: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], bool, Optional[str]]:
-    """Match a requested grocery item to recorded purchases.
-
-    Matches strictly on (category, normalized_name, brand, variant, unit)
-    OR through explicit substitution link.
-    Never silently matches different brands or variants!
-    """
-    req_norm = item_norm_name.strip().lower()
-    req_cat = item_category.strip().lower()
-    req_brand = (item_brand or "").strip().lower()
-    req_variant = (item_variant or "").strip().lower()
-    req_unit = item_unit.strip().lower()
-
+    """Legacy helper for matching a requested grocery item to recorded purchases."""
+    r_tokens = extract_product_tokens(item_norm_name, item_brand, item_variant)
     direct_matches = []
     substitution_matches = []
     substitute_note = None
 
     for p in purchases:
-        p_norm = p.get("normalized_name", p["item_name"]).strip().lower()
-        p_cat = p.get("category", "").strip().lower()
-        p_brand = (p.get("brand") or "").strip().lower()
-        p_variant = (p.get("variant") or "").strip().lower()
-        p_unit = p.get("unit", "").strip().lower()
-
-        # Direct strict match:
-        if (
-            req_norm == p_norm
-            and req_cat == p_cat
-            and req_brand == p_brand
-            and req_variant == p_variant
-            and req_unit == p_unit
-        ):
-            direct_matches.append(p)
+        compat, _ = are_units_compatible(item_unit, p.get("unit"))
+        if not compat:
             continue
 
-        # Explicit substitution match:
         if p.get("is_substitution"):
             sub_for_name = (p.get("substitute_for_item_name") or "").strip().lower()
             sub_for_brand = (p.get("substitute_for_brand") or "").strip().lower()
             sub_for_variant = (p.get("substitute_for_variant") or "").strip().lower()
             if (
-                sub_for_name == req_norm
-                and (not sub_for_brand or sub_for_brand == req_brand)
-                and (not sub_for_variant or sub_for_variant == req_variant)
-                and req_unit == p_unit
+                sub_for_name == item_norm_name.strip().lower()
+                and (not sub_for_brand or sub_for_brand == (item_brand or "").strip().lower())
+                and (not sub_for_variant or sub_for_variant == (item_variant or "").strip().lower())
             ):
                 substitution_matches.append(p)
                 substitute_note = f"Substituted with {p.get('item_name')} ({p.get('brand') or 'standard'})"
+                continue
+
+        p_tokens = extract_product_tokens(
+            p.get("item_name"), p.get("normalized_name"), p.get("brand"), p.get("variant")
+        )
+        score = compute_product_match_score(r_tokens, p_tokens)
+        if score >= 0.60:
+            direct_matches.append(p)
 
     if direct_matches:
         return direct_matches, False, None
@@ -543,24 +786,32 @@ async def calculate_allocation(
             i_name = ov.item_name.strip().lower()
             override_map[(f_num, i_name)] = float(ov.allocated_quantity)
 
-    # 5. Map purchases by canonical key & aggregate quantities
+    # 5. Map purchases globally to manifest items using robust canonical matching engine
+    all_manifest_items = [it for cat_group in manifest.categories for it in cat_group.items]
+    manifest_match_map = _match_all_purchases_to_manifest(all_manifest_items, purchases)
+    item_by_key = {it.item_key: it for it in all_manifest_items}
+
+    # Pre-extract manifest item tokens for fallback matching
+    manifest_tokens: Dict[str, Set[str]] = {
+        it.item_key: extract_product_tokens(
+            it.normalized_name, it.brand, it.variant, *(getattr(it, "original_names", []) or [])
+        )
+        for it in all_manifest_items
+    }
+
     matching_summaries: List[PurchasedItemMatchingSummary] = []
     item_cost_map: Dict[str, Dict[str, Any]] = {}
 
     for cat_group in manifest.categories:
         for it in cat_group.items:
-            matches, is_sub, sub_note = _match_purchase_to_requested(
-                item_norm_name=it.normalized_name,
-                item_category=it.category,
-                item_brand=it.brand,
-                item_variant=it.variant,
-                item_unit=it.unit,
-                purchases=purchases,
-            )
+            matched_entries = manifest_match_map.get(it.item_key, [])
+            matches = [m[0] for m in matched_entries]
+            is_sub = any(m[2] for m in matched_entries)
+            sub_note = next((m[3] for m in matched_entries if m[3]), None)
 
-            purchased_qty = sum(float(m["actual_quantity"]) for m in matches)
+            purchased_qty = sum(float(m[0]["actual_quantity"]) * m[1] for m in matched_entries)
             purchased_total_cost_dec = _quantize_paise(
-                sum((_to_decimal(m["total_price"]) for m in matches), Decimal("0.00"))
+                sum((_to_decimal(m[0]["total_price"]) for m in matched_entries), Decimal("0.00"))
             )
 
             effective_unit_cost_dec = (
@@ -581,6 +832,22 @@ async def calculate_allocation(
                 fulfilled_qty = round(sum(relevant_overrides.values()), 3)
             else:
                 fulfilled_qty = min(it.total_quantity, purchased_qty)
+
+            unfulfilled_qty = max(0.0, round(it.total_quantity - fulfilled_qty, 3))
+
+            # Default proportional ratio if no override exists
+            ratio = min(1.0, (purchased_qty / it.total_quantity)) if it.total_quantity > 0 else 0.0
+
+            item_cost_map[it.item_key] = {
+                "matches": matches,
+                "is_sub": is_sub,
+                "sub_note": sub_note,
+                "purchased_qty": purchased_qty,
+                "purchased_total_cost_dec": purchased_total_cost_dec,
+                "effective_unit_cost_dec": effective_unit_cost_dec,
+                "effective_unit_cost": effective_unit_cost,
+                "fulfillment_ratio": ratio,
+            }
 
             unfulfilled_qty = max(0.0, round(it.total_quantity - fulfilled_qty, 3))
 
@@ -649,6 +916,21 @@ async def calculate_allocation(
             )
 
             cost_info = item_cost_map.get(f_key)
+            if not cost_info:
+                # Fallback: match manifest item using token similarity and unit compatibility
+                f_tokens = extract_product_tokens(norm_name, f_it.brand, f_it.variant)
+                best_flat_score = 0.0
+                best_flat_info = None
+                for m_k, m_info in item_cost_map.items():
+                    m_item = item_by_key.get(m_k)
+                    if m_item and are_units_compatible(f_it.unit, m_item.unit)[0]:
+                        score = compute_product_match_score(manifest_tokens[m_k], f_tokens)
+                        if score > best_flat_score:
+                            best_flat_score = score
+                            best_flat_info = m_info
+                if best_flat_score >= 0.60:
+                    cost_info = best_flat_info
+
             req_qty = float(f_it.quantity or 0.0)
 
             if not cost_info or cost_info["purchased_qty"] <= 0:
@@ -1464,26 +1746,23 @@ async def calculate_society_savings(
         bulk_cost = float(bulk_cost_dec)
         bulk_unit_price = data["unit_price"]
 
-        # Find matching verified benchmark
+        # Find matching verified benchmark using robust token and unit matching
         matched_bench = None
+        bench_tokens_req = extract_product_tokens(data["item_name"], data["brand"], data["variant"])
         for b in benchmarks:
-            b_name = b["product_name"].strip().lower()
-            b_brand = (b.get("brand") or "").strip().lower()
-            b_variant = (b.get("variant") or "").strip().lower()
-            b_unit = b.get("package_unit", "").strip().lower()
+            # Check for evidence freshness (<= 90 days)
+            ev_date = _ensure_utc(b.get("evidence_date"))
+            if ev_date < ninety_days_ago:
+                logger.warning("Benchmark %s is older than 90 days (stale evidence).", b["_id"])
+                continue
 
-            # Must match product, brand (where specified), variant, and unit
-            if (
-                b_name == name
-                and (not brand or b_brand == brand)
-                and (not variant or b_variant == variant)
-                and b_unit == unit
-            ):
-                # Check for evidence freshness (<= 90 days)
-                ev_date = _ensure_utc(b.get("evidence_date"))
-                if ev_date < ninety_days_ago:
-                    logger.warning("Benchmark %s is older than 90 days (stale evidence).", b["_id"])
-                    continue
+            compat, _ = are_units_compatible(unit, b.get("package_unit", ""))
+            if not compat:
+                continue
+
+            b_tokens = extract_product_tokens(b.get("product_name"), b.get("brand"), b.get("variant"))
+            score = compute_product_match_score(bench_tokens_req, b_tokens)
+            if score >= 0.70:
                 matched_bench = b
                 break
 
