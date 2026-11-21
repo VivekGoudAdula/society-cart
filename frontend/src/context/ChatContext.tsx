@@ -1,11 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from './AppContext';
 import { api } from '../services/api';
 import { nexconnClient } from '../services/nexconn/nexconnClient';
 import { NexconnChatMessage, NexconnConnectionState } from '../services/nexconn/nexconnTypes';
 import { isLikelyGroceryMessage } from '../utils/groceryDetector';
 
-interface ChatContextType {
+export interface ChatContextType {
   connectionState: NexconnConnectionState;
   messages: NexconnChatMessage[];
   isLoadingHistory: boolean;
@@ -17,7 +17,7 @@ interface ChatContextType {
   clearChat: () => void;
 }
 
-const ChatContext = createContext<ChatContextType | undefined>(undefined);
+export const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 /**
  * Chat Provider managing real-time Nexconn group chat connection,
@@ -344,12 +344,4 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </ChatContext.Provider>
   );
-};
-
-export const useChat = (): ChatContextType => {
-  const context = useContext(ChatContext);
-  if (!context) {
-    throw new Error('useChat must be used within a ChatProvider');
-  }
-  return context;
 };

@@ -15,7 +15,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { useChat } from '../context/ChatContext';
+import { useChat } from '../hooks/useChat';
 import { Avatar } from '../components/common/Avatar';
 import { Badge } from '../components/common/Badge';
 import { OrderReviewModal } from '../components/orders/OrderReviewModal';
