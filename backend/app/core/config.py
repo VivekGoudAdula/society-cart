@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         """Return allowed CORS origins based on configuration."""
-        raw_origins = [o.strip() for o in self.frontend_origin.split(",") if o.strip()]
+        raw_origins = [o.strip().rstrip("/") for o in self.frontend_origin.split(",") if o.strip()]
         origins = []
         for origin in raw_origins:
             origins.append(origin)
