@@ -135,107 +135,109 @@ export const WelcomePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#252824] selection:bg-[#174D3A] selection:text-white flex flex-col justify-between">
       {/* ------------------------------------------------------------------- */}
-      {/* 1. CLEAN EDITORIAL NAVBAR (MATCHING REFERENCE) */}
+      {/* 1. FLOATING ROUNDED RECTANGLE NAVBAR (WITH TOP GAP) */}
       {/* ------------------------------------------------------------------- */}
-      <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-[#EBE8DF]/50 transition-all">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          {/* Left: Brand Identity */}
-          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#174D3A] text-white shadow-xs">
-              <ShoppingCart className="h-5 w-5" />
+      <div className="sticky top-3 sm:top-5 z-40 w-full px-4 sm:px-6 lg:px-8">
+        <header className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md rounded-2xl sm:rounded-full border border-[#EBE8DF] shadow-md px-5 sm:px-7 py-3 transition-all">
+          <div className="flex items-center justify-between">
+            {/* Left: Brand Identity */}
+            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#174D3A] text-white shadow-xs">
+                <ShoppingCart className="h-4 w-4" />
+              </div>
+              <span className="text-lg sm:text-xl font-bold tracking-tight text-[#18181b]">
+                Society Cart
+              </span>
             </div>
-            <span className="text-xl font-bold tracking-tight text-[#18181b]">
-              Society Cart
-            </span>
-          </div>
 
-          {/* Center Navigation Links (Desktop) */}
-          <nav className="hidden md:flex items-center gap-9 text-sm font-medium text-[#4B5563]">
-            <a href="#how-it-works" className="hover:text-[#18181b] transition-colors">
-              How It Works
-            </a>
-            <a href="#community" className="hover:text-[#18181b] transition-colors">
-              Residents
-            </a>
-            <a href="#community" className="hover:text-[#18181b] transition-colors">
-              Volunteers
-            </a>
-          </nav>
-
-          {/* Right Action CTAs */}
-          <div className="hidden md:flex items-center gap-3">
-            <button
-              onClick={() => handleOpenAuth('login')}
-              className="text-sm font-semibold text-[#4B5563] hover:text-[#18181b] px-4 py-2 rounded-full transition-colors"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => handleOpenAuth('register')}
-              className="rounded-full bg-[#18181b] hover:bg-black text-white px-5 py-2.5 text-sm font-medium transition-all shadow-xs"
-            >
-              Create a Society
-            </button>
-          </div>
-
-          {/* Mobile Hamburger Toggle */}
-          <div className="flex md:hidden items-center gap-2">
-            <button
-              onClick={() => handleOpenAuth('login')}
-              className="text-xs font-semibold text-[#18181b] px-3 py-1.5"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-[#252824] rounded-lg hover:bg-[#F3F0E8] transition-colors"
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Dropdown Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-b border-[#EBE8DF] bg-white px-4 py-5 space-y-4 shadow-sm">
-            <nav className="flex flex-col space-y-3 text-sm font-semibold text-[#252824]">
-              <a
-                href="#how-it-works"
-                onClick={() => setMobileMenuOpen(false)}
-                className="py-1 text-[#4B5563] hover:text-[#18181b]"
-              >
+            {/* Center Navigation Links (Desktop) */}
+            <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#4B5563]">
+              <a href="#how-it-works" className="hover:text-[#18181b] transition-colors">
                 How It Works
               </a>
-              <a
-                href="#community"
-                onClick={() => setMobileMenuOpen(false)}
-                className="py-1 text-[#4B5563] hover:text-[#18181b]"
-              >
-                Residents & Volunteers
+              <a href="#community" className="hover:text-[#18181b] transition-colors">
+                Residents
               </a>
-              <a
-                href="#trust"
-                onClick={() => setMobileMenuOpen(false)}
-                className="py-1 text-[#4B5563] hover:text-[#18181b]"
-              >
-                Trust & Privacy
+              <a href="#community" className="hover:text-[#18181b] transition-colors">
+                Volunteers
               </a>
             </nav>
-            <div className="pt-3 border-t border-[#EBE8DF] flex flex-col gap-2.5">
+
+            {/* Right Action CTAs */}
+            <div className="hidden md:flex items-center gap-2.5">
               <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  handleOpenAuth('register');
-                }}
-                className="w-full rounded-full bg-[#18181b] hover:bg-black text-white py-2.5 text-sm font-semibold transition-all shadow-xs"
+                onClick={() => handleOpenAuth('login')}
+                className="text-sm font-semibold text-[#4B5563] hover:text-[#18181b] px-4 py-2 rounded-full transition-colors"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => handleOpenAuth('register')}
+                className="rounded-full bg-[#18181b] hover:bg-black text-white px-5 py-2 text-sm font-medium transition-all shadow-xs"
               >
                 Create a Society
               </button>
             </div>
+
+            {/* Mobile Hamburger Toggle */}
+            <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={() => handleOpenAuth('login')}
+                className="text-xs font-semibold text-[#18181b] px-2.5 py-1"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-1.5 text-[#252824] rounded-lg hover:bg-[#F3F0E8] transition-colors"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
-        )}
-      </header>
+
+          {/* Mobile Dropdown Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden pt-4 pb-2 mt-3 border-t border-[#EBE8DF] space-y-3">
+              <nav className="flex flex-col space-y-2 text-sm font-semibold text-[#252824]">
+                <a
+                  href="#how-it-works"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="py-1 text-[#4B5563] hover:text-[#18181b]"
+                >
+                  How It Works
+                </a>
+                <a
+                  href="#community"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="py-1 text-[#4B5563] hover:text-[#18181b]"
+                >
+                  Residents & Volunteers
+                </a>
+                <a
+                  href="#trust"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="py-1 text-[#4B5563] hover:text-[#18181b]"
+                >
+                  Trust & Privacy
+                </a>
+              </nav>
+              <div className="pt-2 border-t border-[#EBE8DF]">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleOpenAuth('register');
+                  }}
+                  className="w-full rounded-full bg-[#18181b] hover:bg-black text-white py-2 text-sm font-semibold transition-all shadow-xs"
+                >
+                  Create a Society
+                </button>
+              </div>
+            </div>
+          )}
+        </header>
+      </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* 2. HERO SECTION (16:9 PROPORTIONED, MATCHING USER REFERENCE IMAGE) */}
