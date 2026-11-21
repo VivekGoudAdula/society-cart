@@ -30,10 +30,15 @@ from app.services.nexconn_service import send_system_bot_message
 logger = logging.getLogger(__name__)
 
 
-def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+def _ensure_utc(dt: Any) -> Optional[datetime]:
     """Ensure a datetime object is timezone-aware and set to UTC."""
     if dt is None:
         return None
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except Exception:
+            return None
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)

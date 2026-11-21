@@ -107,21 +107,28 @@ class NexconnClientService {
     this.activeToken = token;
     this.setConnectionState('connecting');
 
-    try {
-      const result = await NCEngine.connect({ token });
-      if (result && result.isOk) {
-        this.setConnectionState('connected');
-        return true;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const result = await NCEngine.connect({ token });
+        if (result && result.isOk) {
+          this.setConnectionState('connected');
+          return true;
+        }
+        if (attempt === 2) {
+          console.warn('[NexconnClient] Connect returned non-ok result after retry:', result);
+          this.setConnectionState('error');
+          return false;
+        }
+      } catch (err) {
+        if (attempt === 2) {
+          console.error('[NexconnClient] Failed to connect after retry:', err);
+          this.setConnectionState('error');
+          return false;
+        }
+        await new Promise((r) => setTimeout(r, 500));
       }
-
-      console.warn('[NexconnClient] Connect returned non-ok result:', result);
-      this.setConnectionState('error');
-      return false;
-    } catch (err) {
-      console.error('[NexconnClient] Failed to connect:', err);
-      this.setConnectionState('error');
-      return false;
     }
+    return false;
   }
 
   /**

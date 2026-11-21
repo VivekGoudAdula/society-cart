@@ -35,6 +35,10 @@ async def setup_test_db():
             await db.order_rounds.drop()
             await db.grocery_submissions.drop()
             await db.grocery_orders.drop()
+            await db.shopping_lists.drop()
+            await db.purchase_records.drop()
+            await db.grocery_bills.drop()
+            await db.retail_benchmarks.drop()
         except Exception:
             pass
     yield db
@@ -46,6 +50,10 @@ async def setup_test_db():
             await db.order_rounds.drop()
             await db.grocery_submissions.drop()
             await db.grocery_orders.drop()
+            await db.shopping_lists.drop()
+            await db.purchase_records.drop()
+            await db.grocery_bills.drop()
+            await db.retail_benchmarks.drop()
         except Exception:
             pass
     await close_mongo_connection()

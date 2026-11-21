@@ -337,21 +337,26 @@ async def recover_stale_processing_orders(
     if stale_threshold_seconds is not None:
         timeout_seconds = stale_threshold_seconds
 
-    orders_col = get_grocery_orders_collection()
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(seconds=timeout_seconds)
+    try:
+        orders_col = get_grocery_orders_collection()
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=timeout_seconds)
 
-    cursor = orders_col.find({
-        "status": "processing",
-        "$or": [
-            {"processing_lease_until": {"$lte": now}},
-            {
-                "processing_lease_until": None,
-                "updated_at": {"$lte": cutoff},
-            },
-        ],
-    })
-    candidate_orders = await cursor.to_list(length=100)
+        cursor = orders_col.find({
+            "status": "processing",
+            "$or": [
+                {"processing_lease_until": {"$lte": now}},
+                {
+                    "processing_lease_until": None,
+                    "updated_at": {"$lte": cutoff},
+                },
+            ],
+        })
+        candidate_orders = await cursor.to_list(length=100)
+    except Exception as exc:
+        logger.warning("Order recovery scan skipped due to database connection error: %s", exc)
+        return 0
+
     recovered_count = 0
 
     for candidate in candidate_orders:

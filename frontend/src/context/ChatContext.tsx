@@ -13,6 +13,7 @@ interface ChatContextType {
   error: string | null;
   sendMessage: (text: string, asGroceryOrder?: boolean) => Promise<{ success: boolean; error?: string }>;
   refreshHistory: () => Promise<void>;
+  reconnect: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -60,7 +61,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Loads message history from the Nexconn group channel.
+   * Loads message history from the Nexconn group channel with strict deduplication.
    */
   const refreshHistory = useCallback(async () => {
     if (!activeGroupId) return;
@@ -71,7 +72,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         50,
         memberLookupRef.current
       );
-      setMessages(history);
+      setMessages((prev) => {
+        // Merge existing and fetched history with message ID deduplication
+        const map = new Map<string, NexconnChatMessage>();
+        for (const m of prev) {
+          map.set(m.id, m);
+        }
+        for (const m of history) {
+          map.set(m.id, m);
+        }
+        return Array.from(map.values()).sort((a, b) => a.sentTime - b.sentTime);
+      });
     } catch (err: any) {
       console.warn('[ChatContext] Error loading message history:', err);
     } finally {
@@ -79,10 +90,46 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [activeGroupId]);
 
+  /**
+   * Explicitly reconnects to the society chat channel with refreshed token credentials.
+   */
+  const reconnect = useCallback(async () => {
+    if (!isAuthenticated || !activeSocietyPair?.society.id) return;
+    setError(null);
+    setConnectionState('connecting');
+
+    try {
+      const societyId = activeSocietyPair.society.id;
+      const tokenRes = await api.chat.getToken(societyId);
+      setActiveGroupId(tokenRes.group_id);
+      await updateMemberLookup(societyId);
+
+      nexconnClient.initialize(tokenRes.app_key);
+      const connected = await nexconnClient.connect(
+        tokenRes.token,
+        tokenRes.user_id,
+        tokenRes.group_id
+      );
+
+      if (connected) {
+        setConnectionState('connected');
+        await refreshHistory();
+      } else {
+        setConnectionState('error');
+        setError('Failed to establish Nexconn connection.');
+      }
+    } catch (err: any) {
+      console.error('[ChatContext] Reconnect failed:', err);
+      setConnectionState('error');
+      setError(err.message || 'Failed to reconnect to group chat.');
+    }
+  }, [isAuthenticated, activeSocietyPair?.society.id, refreshHistory]);
+
   // Connect to Nexconn when authenticated and active society is present
   useEffect(() => {
     let unsubscribeState: (() => void) | null = null;
     let unsubscribeMsg: (() => void) | null = null;
+    let isSubscribed = true;
 
     const connectToSocietyChat = async () => {
       if (!isAuthenticated || !activeSocietyPair?.society.id) {
@@ -114,6 +161,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         // 1. Fetch user-specific chat token and channel credentials from backend
         const tokenRes = await api.chat.getToken(societyId);
+        if (!isSubscribed) return;
         setActiveGroupId(tokenRes.group_id);
 
         // 2. Refresh member roster to display sender identities accurately
@@ -123,11 +171,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nexconnClient.initialize(tokenRes.app_key);
 
         // 4. Register event listeners before connecting
+        let prevConnectionState: NexconnConnectionState = 'disconnected';
         unsubscribeState = nexconnClient.onConnectionStateChange((state) => {
+          if (!isSubscribed) return;
           setConnectionState(state);
+
+          // Automatic Missed Message Recovery on Reconnection:
+          // If transitioning from reconnecting/disconnected/error to connected,
+          // automatically pull the latest message history and deduplicate.
+          if (state === 'connected' && prevConnectionState !== 'connected' && prevConnectionState !== 'connecting') {
+            refreshHistory();
+          }
+          prevConnectionState = state;
         });
 
         unsubscribeMsg = nexconnClient.onMessage((newMsg) => {
+          if (!isSubscribed) return;
           // If message is a system bot announcement or round update, trigger active round refresh
           if (newMsg.isSystemBot || newMsg.text.includes('Grocery Round') || newMsg.text.includes('ROUND')) {
             refreshActiveRound();
@@ -149,7 +208,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           tokenRes.group_id
         );
 
-        if (connected) {
+        if (connected && isSubscribed) {
           // 6. Fetch recent channel message history
           setIsLoadingHistory(true);
           const history = await nexconnClient.fetchMessageHistory(
@@ -157,10 +216,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             50,
             memberLookupRef.current
           );
-          setMessages(history);
-          setIsLoadingHistory(false);
+          if (isSubscribed) {
+            setMessages(history);
+            setIsLoadingHistory(false);
+          }
         }
       } catch (err: any) {
+        if (!isSubscribed) return;
         console.error('[ChatContext] Failed to connect to society chat:', err);
         setError(err.message || 'Failed to connect to group chat.');
         setConnectionState('error');
@@ -170,10 +232,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     connectToSocietyChat();
 
     return () => {
+      isSubscribed = false;
       if (unsubscribeState) unsubscribeState();
       if (unsubscribeMsg) unsubscribeMsg();
     };
-  }, [isAuthenticated, activeSocietyPair?.society.id, user?.id]);
+  }, [isAuthenticated, activeSocietyPair?.society.id, user?.id, refreshHistory]);
 
   /**
    * Sends a confirmed text message to the society's group chat, optionally associating
@@ -304,6 +367,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error,
         sendMessage,
         refreshHistory,
+        reconnect,
       }}
     >
       {children}

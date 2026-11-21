@@ -1195,10 +1195,10 @@ async def get_society_spending_summary(
         "status": {"$in": [BillStatus.FINALIZED.value, BillStatus.PUBLISHED.value, BillStatus.CORRECTED.value]},
     }).to_list(length=1000)
 
-    total_allocated_dec = _quantize_paise(sum((_to_decimal(b["items_subtotal"]) for b in bills), Decimal("0.00")))
+    total_allocated_dec = _quantize_paise(sum((_to_decimal(b.get("items_subtotal", b.get("items_total", 0.0))) for b in bills), Decimal("0.00")))
     total_allocated = float(total_allocated_dec)
 
-    total_shared_dec = _quantize_paise(sum((_to_decimal(b.get("shared_costs_total", 0.0)) for b in bills), Decimal("0.00")))
+    total_shared_dec = _quantize_paise(sum((_to_decimal(b.get("shared_costs_total", b.get("shared_costs_allocated", 0.0))) for b in bills), Decimal("0.00")))
     total_shared = float(total_shared_dec)
 
     unallocated_cost_dec = max(Decimal("0.00"), total_purchase_cost_dec - total_allocated_dec)

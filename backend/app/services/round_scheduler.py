@@ -360,7 +360,13 @@ async def _run_scheduler_loop() -> None:
             logger.info("Round deadline scheduler cancelled.")
             break
         except Exception as exc:
-            logger.warning("Error in round deadline scheduler loop: %s", exc)
+            logger.warning("Notice in round deadline scheduler loop: %s", exc)
+            # When database connection fails or times out, back off for 15 seconds
+            try:
+                await asyncio.sleep(15)
+            except asyncio.CancelledError:
+                break
+            continue
 
         try:
             await asyncio.sleep(10)

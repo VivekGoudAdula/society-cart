@@ -23,7 +23,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await connect_to_mongo()
     start_round_scheduler()
     # Trigger automatic background recovery for any interrupted orders on startup using safe timeout threshold
-    asyncio.create_task(order_service.recover_stale_processing_orders(timeout_seconds=120))
+    async def _safe_initial_recovery():
+        try:
+            await order_service.recover_stale_processing_orders(timeout_seconds=120)
+        except Exception as exc:
+            logger.warning("Startup order recovery skipped (e.g. database not yet reachable): %s", exc)
+
+    asyncio.create_task(_safe_initial_recovery())
     yield
     stop_round_scheduler()
     await close_mongo_connection()

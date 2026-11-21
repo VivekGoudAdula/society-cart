@@ -13,6 +13,7 @@ import {
   Lock,
   Eye,
   HelpCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
@@ -28,7 +29,7 @@ import { api } from '../services/api';
  */
 export const SocietyChatPage: React.FC = () => {
   const { currentUser, society, activeRound, isAuthenticated } = useApp();
-  const { connectionState, messages, isLoadingHistory, sendMessage, error: chatError } = useChat();
+  const { connectionState, messages, isLoadingHistory, sendMessage, reconnect, error: chatError } = useChat();
 
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -148,11 +149,24 @@ export const SocietyChatPage: React.FC = () => {
               <Loader2 className="h-3.5 w-3.5 text-amber-600 animate-spin" />
               <span className="hidden sm:inline">Connecting...</span>
             </div>
+          ) : connectionState === 'error' ? (
+            <button
+              onClick={() => reconnect()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 border border-red-200 text-[11px] font-bold text-red-700 hover:bg-red-100 transition-colors shadow-xs"
+              title="Click to reconnect"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-red-600" />
+              <span>Reconnect</span>
+            </button>
           ) : isAuthenticated ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-600">
+            <button
+              onClick={() => reconnect()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+              title="Click to connect"
+            >
               <WifiOff className="h-3.5 w-3.5 text-slate-400" />
               <span className="hidden sm:inline">Connecting to Chat</span>
-            </div>
+            </button>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-[11px] font-semibold text-indigo-700">
               <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
@@ -222,9 +236,20 @@ export const SocietyChatPage: React.FC = () => {
 
       {/* 3. Error Banner (if any) */}
       {(chatError || sendError) && (
-        <div className="px-4 py-2 bg-red-50 border-b border-red-200 flex items-center gap-2 text-xs text-red-800">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-          <span>{sendError || chatError}</span>
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 flex items-center justify-between gap-2 text-xs text-red-800">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+            <span>{sendError || chatError}</span>
+          </div>
+          {chatError && (
+            <button
+              onClick={() => reconnect()}
+              className="shrink-0 px-2.5 py-1 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 font-bold text-[11px] transition-colors flex items-center gap-1"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Retry</span>
+            </button>
+          )}
         </div>
       )}
 
