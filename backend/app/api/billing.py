@@ -22,6 +22,7 @@ from app.schemas.billing import (
     SocietySavingsSummaryResponse,
     SocietySpendingSummaryResponse,
     UpdatePurchaseRequest,
+    VerifyBenchmarkRequest,
 )
 from app.schemas.user import UserResponse
 from app.services import billing_service
@@ -269,6 +270,29 @@ async def record_benchmark(
     """Record verified retail benchmark price evidence with source documentation."""
     return await billing_service.record_retail_benchmark(
         society_id=society_id,
+        user_id=current_user.id,
+        req=req,
+    )
+
+
+@router.patch(
+    "/societies/{society_id}/rounds/{round_id}/benchmarks/{benchmark_id}/verify",
+    response_model=RetailBenchmarkResponse,
+    summary="Explicitly verify or reject a retail benchmark price",
+)
+async def verify_benchmark(
+    society_id: str,
+    round_id: str,
+    benchmark_id: str,
+    req: VerifyBenchmarkRequest,
+    current_user: UserResponse = Depends(get_current_active_user),
+    membership: Dict[str, Any] = Depends(require_society_volunteer_or_admin),
+) -> RetailBenchmarkResponse:
+    """Explicitly verify or reject a retail benchmark evidence record (Volunteer/Admin only)."""
+    return await billing_service.verify_retail_benchmark(
+        society_id=society_id,
+        round_id=round_id,
+        benchmark_id=benchmark_id,
         user_id=current_user.id,
         req=req,
     )

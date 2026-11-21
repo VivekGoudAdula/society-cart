@@ -22,6 +22,7 @@ from httpx import AsyncClient
 from unittest.mock import patch, AsyncMock
 
 from app.core.database import (
+    get_order_rounds_collection,
     get_grocery_orders_collection,
     get_purchase_records_collection,
     get_grocery_bills_collection,
@@ -743,7 +744,7 @@ async def test_23_to_28_evidence_backed_savings_and_honest_reporting(client: Asy
     )
     assert fin_res.status_code == 200
 
-    # 1. Record verified retail benchmark evidence: Rice at Rs 60.00/kg from Reliance Fresh
+    # 1. Record retail benchmark evidence: Rice at Rs 60.00/kg from Reliance Fresh
     bench_resp = await client.post(
         f"/api/societies/{soc1_id}/rounds/{round_id}/benchmarks",
         headers=headers_vol,
@@ -761,6 +762,17 @@ async def test_23_to_28_evidence_backed_savings_and_honest_reporting(client: Asy
     )
     assert bench_resp.status_code == 201
     assert bench_resp.json()["benchmark_unit_price"] == 60.0
+    assert bench_resp.json()["verification_status"] == "pending"
+    bench_id = bench_resp.json()["id"]
+
+    # 1b. Verify benchmark before requesting savings
+    verify_resp = await client.patch(
+        f"/api/societies/{soc1_id}/rounds/{round_id}/benchmarks/{bench_id}/verify",
+        headers=headers_vol,
+        json={"status": "verified", "notes": "Verified against physical receipt."},
+    )
+    assert verify_resp.status_code == 200
+    assert verify_resp.json()["verification_status"] == "verified"
 
     # 2. Retrieve savings summary
     sav_resp = await client.get(
@@ -820,3 +832,364 @@ async def test_29_and_30_rbac_privilege_enforcement(client: AsyncClient, setup_p
         json={},
     )
     assert res_fin.status_code == 403
+
+
+# ============================================================================
+# 8. Phase 7 Audit Regression Tests
+# ============================================================================
+
+async def _seed_three_flats_scenario(data, purchase_qty: float = 15.0, purchase_total: float = 750.0):
+    """Seed Flat A (5 kg), Flat B (10 kg), Flat C (10 kg) and a purchase record in a new round."""
+    rounds_col = get_order_rounds_collection()
+    orders_col = get_grocery_orders_collection()
+    purchases_col = get_purchase_records_collection()
+    soc1_id = data["soc1_id"]
+    t = datetime.now(timezone.utc)
+    ts = int(time.time() * 1000)
+
+    # Create fresh round
+    round_res = await rounds_col.insert_one({
+        "society_id": soc1_id,
+        "round_number": 99,
+        "status": "closed",
+        "opened_by_user_id": data["user1_id"],
+        "opened_at": t,
+        "closed_at": t,
+        "shopping_list_compiled": False,
+        "created_at": t,
+        "updated_at": t,
+    })
+    r_id = str(round_res.inserted_id)
+
+    # Flat A: 5 kg Rice
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": r_id,
+        "round_number": 99,
+        "submission_id": f"sub_a_{ts}",
+        "user_id": data["user1_id"],
+        "flat_number": "A-101",
+        "user_name": "Resident Flat A",
+        "raw_text": "5 kg rice",
+        "status": "confirmed",
+        "items": [{"id": "item_a", "original_name": "rice", "normalized_name": "Rice", "quantity": 5.0, "unit": "kg", "category": "grains_rice"}],
+        "created_at": t,
+        "updated_at": t,
+    })
+
+    # Flat B: 10 kg Rice
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": r_id,
+        "round_number": 99,
+        "submission_id": f"sub_b_{ts}",
+        "user_id": data["user2_id"],
+        "flat_number": "B-202",
+        "user_name": "Resident Flat B",
+        "raw_text": "10 kg rice",
+        "status": "confirmed",
+        "items": [{"id": "item_b", "original_name": "rice", "normalized_name": "Rice", "quantity": 10.0, "unit": "kg", "category": "grains_rice"}],
+        "created_at": t,
+        "updated_at": t,
+    })
+
+    # Flat C: 10 kg Rice
+    await orders_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": r_id,
+        "round_number": 99,
+        "submission_id": f"sub_c_{ts}",
+        "user_id": data["user2_id"],
+        "flat_number": "C-303",
+        "user_name": "Resident Flat C",
+        "raw_text": "10 kg rice",
+        "status": "confirmed",
+        "items": [{"id": "item_c", "original_name": "rice", "normalized_name": "Rice", "quantity": 10.0, "unit": "kg", "category": "grains_rice"}],
+        "created_at": t,
+        "updated_at": t,
+    })
+
+    # Volunteer purchase
+    unit_price = round(purchase_total / purchase_qty, 4)
+    await purchases_col.insert_one({
+        "society_id": soc1_id,
+        "round_id": r_id,
+        "item_name": "Rice",
+        "normalized_name": "Rice",
+        "category": "grains_rice",
+        "brand": None,
+        "variant": None,
+        "actual_quantity": purchase_qty,
+        "unit": "kg",
+        "total_price": purchase_total,
+        "unit_price": unit_price,
+        "shop_name": "Grain Mandi",
+        "purchase_date": t,
+        "invoice_ref": f"MANDI-{ts}",
+        "created_by_user_id": data["user1_id"],
+        "created_at": t,
+        "updated_at": t,
+        "audit_trail": [],
+    })
+
+    return r_id
+
+
+@pytest.mark.asyncio
+async def test_31_phase6_packing_case_a_equal_distribution(client: AsyncClient, setup_phase7_data):
+    """Audit Test Case A:
+    - Flat A requested 5 kg rice.
+    - Flat B requested 10 kg rice.
+    - Flat C requested 10 kg rice.
+    - Volunteer purchased 15 kg at Rs 50/kg (total Rs 750).
+    - Volunteer distributes: 5 kg, 5 kg, and 5 kg.
+    Verify:
+    - Flat A billed for 5 kg (Rs 250), 0 unfulfilled.
+    - Flat B billed for 5 kg (Rs 250), 5 kg unfulfilled.
+    - Flat C billed for 5 kg (Rs 250), 5 kg unfulfilled.
+    - Total allocated = Rs 750.
+    - Unallocated inventory = 0 kg (Rs 0.00).
+    - Reconciliation holds strictly.
+    """
+    data = setup_phase7_data
+    soc1_id = data["soc1_id"]
+    headers_vol = data["headers_vol"]
+
+    r_id = await _seed_three_flats_scenario(data, purchase_qty=15.0, purchase_total=750.0)
+
+    # Volunteer finalizes bills with Case A physical allocation override: 5 kg, 5 kg, 5 kg
+    fin_resp = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/bills/finalize",
+        headers=headers_vol,
+        json={
+            "flat_allocations_override": [
+                {"flat_number": "A-101", "item_name": "Rice", "allocated_quantity": 5.0},
+                {"flat_number": "B-202", "item_name": "Rice", "allocated_quantity": 5.0},
+                {"flat_number": "C-303", "item_name": "Rice", "allocated_quantity": 5.0},
+            ]
+        },
+    )
+    assert fin_resp.status_code == 200
+    bills = fin_resp.json()
+    assert len(bills) == 3
+
+    bill_a = next(b for b in bills if b["flat_number"] == "A-101")
+    bill_b = next(b for b in bills if b["flat_number"] == "B-202")
+    bill_c = next(b for b in bills if b["flat_number"] == "C-303")
+
+    # Flat A: 5 kg requested, 5 kg allocated, Rs 250, 0 unfulfilled
+    it_a = bill_a["items"][0]
+    assert it_a["requested_quantity"] == 5.0
+    assert it_a["allocated_quantity"] == 5.0
+    assert it_a["item_total"] == 250.0
+    assert it_a["is_unfulfilled"] is False
+    assert it_a["unfulfilled_quantity"] == 0.0
+
+    # Flat B: 10 kg requested, 5 kg allocated, Rs 250, 5 kg unfulfilled
+    it_b = bill_b["items"][0]
+    assert it_b["requested_quantity"] == 10.0
+    assert it_b["allocated_quantity"] == 5.0
+    assert it_b["item_total"] == 250.0
+    assert it_b["is_unfulfilled"] is True
+    assert it_b["unfulfilled_quantity"] == 5.0
+
+    # Flat C: 10 kg requested, 5 kg allocated, Rs 250, 5 kg unfulfilled
+    it_c = bill_c["items"][0]
+    assert it_c["requested_quantity"] == 10.0
+    assert it_c["allocated_quantity"] == 5.0
+    assert it_c["item_total"] == 250.0
+    assert it_c["is_unfulfilled"] is True
+    assert it_c["unfulfilled_quantity"] == 5.0
+
+    # Society spending summary reconciliation
+    spend_resp = await client.get(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/spending-summary",
+        headers=headers_vol,
+    )
+    assert spend_resp.status_code == 200
+    spend = spend_resp.json()
+    assert spend["total_actual_purchase_cost"] == 750.0
+    assert spend["total_allocated_bill_costs"] == 750.0
+    assert spend["total_unallocated_cost"] == 0.0
+    assert spend["is_reconciled"] is True
+
+
+@pytest.mark.asyncio
+async def test_32_phase6_packing_case_b_skewed_distribution(client: AsyncClient, setup_phase7_data):
+    """Audit Test Case B:
+    - Same requests: Flat A (5 kg), Flat B (10 kg), Flat C (10 kg).
+    - Volunteer purchased 15 kg at Rs 50/kg (total Rs 750).
+    - Volunteer distributes: 2 kg, 8 kg, and 5 kg.
+    Verify:
+    - Flat A billed for 2 kg (Rs 100), 3 kg unfulfilled.
+    - Flat B billed for 8 kg (Rs 400), 2 kg unfulfilled.
+    - Flat C billed for 5 kg (Rs 250), 5 kg unfulfilled.
+    - Total allocated = Rs 750.
+    - Unallocated inventory = 0 kg (Rs 0.00).
+    - Residents are NEVER billed for quantities they did not receive.
+    """
+    data = setup_phase7_data
+    soc1_id = data["soc1_id"]
+    headers_vol = data["headers_vol"]
+
+    r_id = await _seed_three_flats_scenario(data, purchase_qty=15.0, purchase_total=750.0)
+
+    # Volunteer finalizes bills with Case B physical allocation: 2 kg, 8 kg, 5 kg
+    fin_resp = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/bills/finalize",
+        headers=headers_vol,
+        json={
+            "flat_allocations_override": [
+                {"flat_number": "A-101", "item_name": "Rice", "allocated_quantity": 2.0},
+                {"flat_number": "B-202", "item_name": "Rice", "allocated_quantity": 8.0},
+                {"flat_number": "C-303", "item_name": "Rice", "allocated_quantity": 5.0},
+            ]
+        },
+    )
+    assert fin_resp.status_code == 200
+    bills = fin_resp.json()
+
+    bill_a = next(b for b in bills if b["flat_number"] == "A-101")
+    bill_b = next(b for b in bills if b["flat_number"] == "B-202")
+    bill_c = next(b for b in bills if b["flat_number"] == "C-303")
+
+    # Flat A: 2 kg allocated (Rs 100), 3 kg unfulfilled
+    it_a = bill_a["items"][0]
+    assert it_a["allocated_quantity"] == 2.0
+    assert it_a["item_total"] == 100.0
+    assert it_a["unfulfilled_quantity"] == 3.0
+
+    # Flat B: 8 kg allocated (Rs 400), 2 kg unfulfilled
+    it_b = bill_b["items"][0]
+    assert it_b["allocated_quantity"] == 8.0
+    assert it_b["item_total"] == 400.0
+    assert it_b["unfulfilled_quantity"] == 2.0
+
+    # Flat C: 5 kg allocated (Rs 250), 5 kg unfulfilled
+    it_c = bill_c["items"][0]
+    assert it_c["allocated_quantity"] == 5.0
+    assert it_c["item_total"] == 250.0
+    assert it_c["unfulfilled_quantity"] == 5.0
+
+    # Reconciliation check
+    spend_resp = await client.get(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/spending-summary",
+        headers=headers_vol,
+    )
+    assert spend_resp.status_code == 200
+    spend = spend_resp.json()
+    assert spend["total_actual_purchase_cost"] == 750.0
+    assert spend["total_allocated_bill_costs"] == 750.0
+    assert spend["total_unallocated_cost"] == 0.0
+    assert spend["is_reconciled"] is True
+
+
+@pytest.mark.asyncio
+async def test_33_benchmark_explicit_verification_workflow(client: AsyncClient, setup_phase7_data):
+    """Test explicit benchmark verification workflow:
+    1. Benchmark creation starts as pending.
+    2. Savings calculation excludes pending benchmarks.
+    3. Volunteer verifies benchmark -> becomes verified with audit metadata.
+    4. Savings calculation includes verified benchmark.
+    """
+    data = setup_phase7_data
+    soc1_id = data["soc1_id"]
+    headers_vol = data["headers_vol"]
+    headers_res1 = data["headers_res1"]
+
+    # Seed orders and finalize bills
+    r_id = await _seed_three_flats_scenario(data, purchase_qty=15.0, purchase_total=750.0)
+    await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/bills/finalize",
+        headers=headers_vol,
+        json={},
+    )
+
+    # 1. Record benchmark: starts as PENDING
+    b_resp = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/benchmarks",
+        headers=headers_vol,
+        json={
+            "product_name": "Rice",
+            "package_size": 1.0,
+            "package_unit": "kg",
+            "benchmark_price": 65.0,
+            "store_name": "Nature Basket",
+            "source_type": "price_listing",
+            "evidence_date": datetime.now(timezone.utc).isoformat(),
+            "location": "Indiranagar, Bengaluru",
+        },
+    )
+    assert b_resp.status_code == 201
+    bench = b_resp.json()
+    assert bench["verification_status"] == "pending"
+    assert bench["verified_by"] is None
+    bench_id = bench["id"]
+
+    # 2. Savings before verification: benchmark is NOT used (Benchmark Unavailable)
+    sav_pending = (await client.get(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/savings",
+        headers=headers_res1,
+    )).json()
+    rice_pending = next(it for it in sav_pending["items"] if it["item_name"].lower() == "rice")
+    assert rice_pending["has_benchmark"] is False
+    assert rice_pending["status_label"] == "Benchmark Unavailable"
+
+    # 3. Volunteer verifies the benchmark
+    v_resp = await client.patch(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/benchmarks/{bench_id}/verify",
+        headers=headers_vol,
+        json={"status": "verified", "notes": "Audited invoice matched store location."},
+    )
+    assert v_resp.status_code == 200
+    v_bench = v_resp.json()
+    assert v_bench["verification_status"] == "verified"
+    assert v_bench["verified_by"] is not None
+    assert v_bench["verified_at"] is not None
+
+    # 4. Savings after verification: benchmark is applied
+    sav_verified = (await client.get(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/savings",
+        headers=headers_res1,
+    )).json()
+    rice_ver = next(it for it in sav_verified["items"] if it["item_name"].lower() == "rice")
+    assert rice_ver["has_benchmark"] is True
+    assert rice_ver["status_label"] == "Verified Savings"
+    assert rice_ver["benchmark_unit_price"] == 65.0
+    assert rice_ver["savings_amount"] > 0
+
+
+@pytest.mark.asyncio
+async def test_34_concurrent_bill_correction_conflict_rejection(client: AsyncClient, setup_phase7_data):
+    """Test atomic CAS prevents concurrent duplicate corrections on the same bill."""
+    data = setup_phase7_data
+    soc1_id = data["soc1_id"]
+    headers_vol = data["headers_vol"]
+
+    r_id = await _seed_three_flats_scenario(data, purchase_qty=15.0, purchase_total=750.0)
+    fin_resp = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/bills/finalize",
+        headers=headers_vol,
+        json={},
+    )
+    assert fin_resp.status_code == 200
+    bills = fin_resp.json()
+    bill_id = bills[0]["id"]
+
+    # First correction succeeds
+    corr1 = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/bills/{bill_id}/correct",
+        headers=headers_vol,
+        json={"correction_notes": "First valid correction by Volunteer A."},
+    )
+    assert corr1.status_code == 200
+    assert corr1.json()["bill_version"] == 2
+
+    # Second concurrent correction attempt on the original bill fails with 409 Conflict
+    corr2 = await client.post(
+        f"/api/societies/{soc1_id}/rounds/{r_id}/bills/{bill_id}/correct",
+        headers=headers_vol,
+        json={"correction_notes": "Conflicting correction attempt on same bill."},
+    )
+    assert corr2.status_code == 409
+    assert "cannot be corrected" in corr2.json()["detail"].lower()

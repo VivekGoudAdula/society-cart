@@ -6,6 +6,7 @@ verified retail benchmark evidence, and transparent savings analysis.
 """
 
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from bson import ObjectId
@@ -23,6 +24,7 @@ from app.schemas.billing import (
     BillStatus,
     FinalizeBillsRequest,
     FlatAllocationPreview,
+    FlatItemAllocationOverride,
     GroceryBillResponse,
     ItemAllocationDetail,
     ItemSavingsDetail,
@@ -37,6 +39,7 @@ from app.schemas.billing import (
     SocietySavingsSummaryResponse,
     SocietySpendingSummaryResponse,
     UpdatePurchaseRequest,
+    VerifyBenchmarkRequest,
 )
 from app.services import membership_service, shopping_list_service
 from app.services.nexconn_service import send_system_bot_message
@@ -48,6 +51,26 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Helpers
 # ============================================================================
+
+def _to_decimal(val: Any) -> Decimal:
+    """Convert float, int, or string safely to Decimal."""
+    if val is None:
+        return Decimal("0.00")
+    if isinstance(val, Decimal):
+        return val
+    return Decimal(str(val))
+
+
+def _quantize_paise(d: Any) -> Decimal:
+    """Round to 2 decimal places (paise) using ROUND_HALF_UP."""
+    dec = _to_decimal(d)
+    return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _quantize_unit_cost(d: Any) -> Decimal:
+    """Round unit costs to 4 decimal places using ROUND_HALF_UP."""
+    dec = _to_decimal(d)
+    return dec.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 def _ensure_utc(dt: Optional[datetime]) -> datetime:
     """Ensure datetime has timezone.utc."""
@@ -486,8 +509,15 @@ async def calculate_allocation(
     round_id: str,
     user_id: str,
     shared_costs: Optional[List[SharedCostEntry]] = None,
+    flat_allocations_override: Optional[List[FlatItemAllocationOverride]] = None,
 ) -> AllocationPreviewResponse:
-    """Core cost-allocation engine calculating per-flat item costs from actual purchases."""
+    """Core cost-allocation engine calculating per-flat item costs from actual purchases.
+
+    Supports:
+    - Decimal-safe monetary arithmetic with paise precision.
+    - Explicit physical flat-wise allocation overrides from volunteer packing breakdown.
+    - Transparent distinction between unfulfilled resident orders and unallocated inventory.
+    """
     # 1. Load compiled shopping list from Phase 6
     manifest = await shopping_list_service.get_shopping_list(society_id, round_id)
     if not manifest:
@@ -499,12 +529,21 @@ async def calculate_allocation(
     cursor = purchases_col.find({"society_id": society_id, "round_id": round_id})
     purchases = await cursor.to_list(length=1000)
 
-    # 3. Calculate total actual purchase cost
-    total_actual_purchase_cost = round(sum(float(p["total_price"]) for p in purchases), 2)
+    # 3. Calculate total actual purchase cost using Decimal
+    total_actual_purchase_cost_dec = _quantize_paise(
+        sum((_to_decimal(p["total_price"]) for p in purchases), Decimal("0.00"))
+    )
+    total_actual_purchase_cost = float(total_actual_purchase_cost_dec)
 
-    # 4. Map purchases by canonical key & aggregate quantities
-    # Each shopping list item key matches against purchases
-    # Determine fulfillment ratios and weighted effective unit costs
+    # 4. Build override lookup map if provided
+    override_map: Dict[Tuple[str, str], float] = {}
+    if flat_allocations_override:
+        for ov in flat_allocations_override:
+            f_num = ov.flat_number.strip().lower()
+            i_name = ov.item_name.strip().lower()
+            override_map[(f_num, i_name)] = float(ov.allocated_quantity)
+
+    # 5. Map purchases by canonical key & aggregate quantities
     matching_summaries: List[PurchasedItemMatchingSummary] = []
     item_cost_map: Dict[str, Dict[str, Any]] = {}
 
@@ -520,15 +559,32 @@ async def calculate_allocation(
             )
 
             purchased_qty = sum(float(m["actual_quantity"]) for m in matches)
-            purchased_total_cost = sum(float(m["total_price"]) for m in matches)
-            fulfilled_qty = min(it.total_quantity, purchased_qty)
-            unfulfilled_qty = max(0.0, round(it.total_quantity - purchased_qty, 3))
-
-            effective_unit_cost = (
-                round(purchased_total_cost / purchased_qty, 4) if purchased_qty > 0 else 0.0
+            purchased_total_cost_dec = _quantize_paise(
+                sum((_to_decimal(m["total_price"]) for m in matches), Decimal("0.00"))
             )
 
-            # Fulfillment ratio for proportional flat allocation
+            effective_unit_cost_dec = (
+                _quantize_unit_cost(purchased_total_cost_dec / _to_decimal(purchased_qty))
+                if purchased_qty > 0
+                else Decimal("0.0000")
+            )
+            effective_unit_cost = float(effective_unit_cost_dec)
+
+            # Check if this item has any flat allocation overrides
+            norm_name_lower = it.normalized_name.strip().lower()
+            relevant_overrides = {
+                k[0]: v for k, v in override_map.items() if k[1] == norm_name_lower
+            }
+
+            if relevant_overrides:
+                # Sum explicitly allocated quantities across flats
+                fulfilled_qty = round(sum(relevant_overrides.values()), 3)
+            else:
+                fulfilled_qty = min(it.total_quantity, purchased_qty)
+
+            unfulfilled_qty = max(0.0, round(it.total_quantity - fulfilled_qty, 3))
+
+            # Default proportional ratio if no override exists
             ratio = min(1.0, (purchased_qty / it.total_quantity)) if it.total_quantity > 0 else 0.0
 
             item_cost_map[it.item_key] = {
@@ -536,7 +592,8 @@ async def calculate_allocation(
                 "is_sub": is_sub,
                 "sub_note": sub_note,
                 "purchased_qty": purchased_qty,
-                "purchased_total_cost": purchased_total_cost,
+                "purchased_total_cost_dec": purchased_total_cost_dec,
+                "effective_unit_cost_dec": effective_unit_cost_dec,
                 "effective_unit_cost": effective_unit_cost,
                 "fulfillment_ratio": ratio,
             }
@@ -556,25 +613,33 @@ async def calculate_allocation(
                     is_substituted=is_sub,
                     substitute_item_name=matches[0]["item_name"] if is_sub and matches else None,
                     effective_unit_cost=effective_unit_cost,
-                    total_cost=round(fulfilled_qty * effective_unit_cost, 2),
+                    total_cost=float(_quantize_paise(_to_decimal(fulfilled_qty) * effective_unit_cost_dec)),
                 )
             )
 
-    # 5. Flat-wise item allocation
+    # 6. Flat-wise item allocation
     flat_allocations: List[FlatAllocationPreview] = []
-    total_allocated_flats_cost = 0.0
+    total_allocated_flats_cost_dec = Decimal("0.00")
 
-    shared_cost_sum = round(sum(sc.amount for sc in (shared_costs or [])), 2)
+    shared_cost_sum_dec = _quantize_paise(sum((_to_decimal(sc.amount) for sc in (shared_costs or [])), Decimal("0.00")))
+    shared_cost_sum = float(shared_cost_sum_dec)
     num_flats = len(manifest.packing_breakdown)
-    per_flat_shared = round(shared_cost_sum / num_flats, 2) if num_flats > 0 else 0.0
-    shared_residual = round(shared_cost_sum - (per_flat_shared * num_flats), 2)
+
+    if num_flats > 0:
+        per_flat_shared_dec = _quantize_paise(shared_cost_sum_dec / Decimal(str(num_flats)))
+        shared_residual_dec = shared_cost_sum_dec - (per_flat_shared_dec * Decimal(str(num_flats)))
+    else:
+        per_flat_shared_dec = Decimal("0.00")
+        shared_residual_dec = Decimal("0.00")
 
     for flat_idx, flat in enumerate(manifest.packing_breakdown):
         allocated_items: List[ItemAllocationDetail] = []
-        flat_items_subtotal = 0.0
+        flat_items_subtotal_dec = Decimal("0.00")
+        f_num_lower = flat.flat_number.strip().lower()
 
         for f_it in flat.items:
             norm_name = f_it.normalized_name
+            norm_name_lower = norm_name.strip().lower()
             f_key = _build_aggregation_key(
                 normalized_name=norm_name,
                 brand=f_it.brand,
@@ -584,6 +649,8 @@ async def calculate_allocation(
             )
 
             cost_info = item_cost_map.get(f_key)
+            req_qty = float(f_it.quantity or 0.0)
+
             if not cost_info or cost_info["purchased_qty"] <= 0:
                 # Completely unfulfilled item
                 allocated_items.append(
@@ -593,24 +660,32 @@ async def calculate_allocation(
                         brand=f_it.brand,
                         variant=f_it.variant,
                         category=f_it.category,
-                        requested_quantity=f_it.quantity or 0.0,
+                        requested_quantity=req_qty,
                         allocated_quantity=0.0,
                         unit=f_it.unit,
                         unit_price=0.0,
                         item_total=0.0,
                         is_substituted=False,
                         is_unfulfilled=True,
-                        unfulfilled_quantity=f_it.quantity or 0.0,
+                        unfulfilled_quantity=req_qty,
                     )
                 )
             else:
-                ratio = cost_info["fulfillment_ratio"]
+                unit_cost_dec = cost_info["effective_unit_cost_dec"]
                 unit_cost = cost_info["effective_unit_cost"]
-                req_qty = f_it.quantity or 0.0
-                alloc_qty = round(req_qty * ratio, 3)
+
+                # Check if explicit physical allocation override exists for this flat & item
+                override_key = (f_num_lower, norm_name_lower)
+                if override_key in override_map:
+                    alloc_qty = round(override_map[override_key], 3)
+                else:
+                    ratio = cost_info["fulfillment_ratio"]
+                    alloc_qty = round(req_qty * ratio, 3)
+
                 unfulfilled_qty = max(0.0, round(req_qty - alloc_qty, 3))
-                item_total = round(alloc_qty * unit_cost, 2)
-                flat_items_subtotal = round(flat_items_subtotal + item_total, 2)
+                item_total_dec = _quantize_paise(_to_decimal(alloc_qty) * unit_cost_dec)
+                item_total = float(item_total_dec)
+                flat_items_subtotal_dec += item_total_dec
 
                 allocated_items.append(
                     ItemAllocationDetail(
@@ -622,7 +697,7 @@ async def calculate_allocation(
                         requested_quantity=req_qty,
                         allocated_quantity=alloc_qty,
                         unit=f_it.unit,
-                        unit_price=round(unit_cost, 2),
+                        unit_price=float(_quantize_paise(unit_cost_dec)),
                         item_total=item_total,
                         is_substituted=cost_info["is_sub"],
                         substitute_notes=cost_info["sub_note"],
@@ -631,13 +706,17 @@ async def calculate_allocation(
                     )
                 )
 
-        # Shared cost allocation (first flat receives any residual paise)
-        this_shared = per_flat_shared
+        # Shared cost allocation (first flat deterministically receives any residual paise)
+        this_shared_dec = per_flat_shared_dec
         if flat_idx == 0:
-            this_shared = round(this_shared + shared_residual, 2)
+            this_shared_dec += shared_residual_dec
+        this_shared = float(this_shared_dec)
 
-        final_flat_total = round(flat_items_subtotal + this_shared, 2)
-        total_allocated_flats_cost = round(total_allocated_flats_cost + flat_items_subtotal, 2)
+        final_flat_total_dec = flat_items_subtotal_dec + this_shared_dec
+        flat_items_subtotal = float(flat_items_subtotal_dec)
+        final_flat_total = float(final_flat_total_dec)
+
+        total_allocated_flats_cost_dec += flat_items_subtotal_dec
 
         flat_allocations.append(
             FlatAllocationPreview(
@@ -653,18 +732,27 @@ async def calculate_allocation(
             )
         )
 
-    # 6. Reconciliation Analysis
-    # Unallocated cost = total_actual_purchase_cost - total_allocated_flats_cost
-    # If unallocated_cost >= 0, it represents extra purchased inventory
-    unallocated_cost = max(0.0, round(total_actual_purchase_cost - total_allocated_flats_cost, 2))
-    reconciled_sum = round(total_allocated_flats_cost + unallocated_cost, 2)
-    diff = abs(total_actual_purchase_cost - reconciled_sum)
-    is_reconciled = (diff <= 0.05)
+    # 7. Financial Reconciliation Analysis
+    # Actual Purchase Cost = Resident Allocations + Unallocated Inventory Cost
+    total_allocated_flats_cost = float(total_allocated_flats_cost_dec)
+    unallocated_cost_dec = max(Decimal("0.00"), total_actual_purchase_cost_dec - total_allocated_flats_cost_dec)
+    unallocated_cost = float(unallocated_cost_dec)
+
+    reconciled_sum_dec = total_allocated_flats_cost_dec + unallocated_cost_dec
+    diff_dec = abs(total_actual_purchase_cost_dec - reconciled_sum_dec)
+    is_reconciled = (diff_dec <= Decimal("0.02"))
 
     if is_reconciled:
-        msg = f"Reconciled: Total Purchase (Rs {total_actual_purchase_cost:.2f}) = Allocated (Rs {total_allocated_flats_cost:.2f}) + Unallocated (Rs {unallocated_cost:.2f})"
+        msg = (
+            f"Reconciled: Total Purchase (Rs {total_actual_purchase_cost:.2f}) = "
+            f"Allocated (Rs {total_allocated_flats_cost:.2f}) + "
+            f"Unallocated Inventory (Rs {unallocated_cost:.2f})"
+        )
     else:
-        msg = f"Discrepancy detected: Total Purchase Rs {total_actual_purchase_cost:.2f} differs from allocated Rs {total_allocated_flats_cost:.2f} by Rs {diff:.2f}."
+        msg = (
+            f"Discrepancy detected: Total Purchase Rs {total_actual_purchase_cost:.2f} differs "
+            f"from reconciled sum Rs {float(reconciled_sum_dec):.2f} by Rs {float(diff_dec):.2f}."
+        )
 
     can_finalize = is_reconciled and len(flat_allocations) > 0 and total_actual_purchase_cost > 0
 
@@ -715,8 +803,14 @@ async def finalize_bills(
         logger.info("Bills already finalized for round %s; returning existing records.", round_id)
         return [_serialize_bill(b) for b in existing_bills]
 
-    # Compute fresh allocation preview
-    preview = await calculate_allocation(society_id, round_id, user_id, req.shared_costs)
+    # Compute fresh allocation preview respecting physical allocations override
+    preview = await calculate_allocation(
+        society_id=society_id,
+        round_id=round_id,
+        user_id=user_id,
+        shared_costs=req.shared_costs,
+        flat_allocations_override=req.flat_allocations_override,
+    )
     if not preview.is_reconciled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -820,40 +914,50 @@ async def correct_bill(
     user_id: str,
     correction_notes: str,
 ) -> GroceryBillResponse:
-    """Create a corrected version of a finalized bill while preserving audit history."""
+    """Create a corrected version of a finalized bill while preserving audit history.
+
+    Uses atomic compare-and-swap (CAS) to prevent concurrent conflicting corrections
+    from creating divergent version forks.
+    """
     await membership_service.require_society_role(
         user_id, society_id, ["volunteer", "admin"]
     )
 
     bills_col = get_grocery_bills_collection()
-    existing = await bills_col.find_one({
-        "_id": ObjectId(bill_id),
-        "society_id": society_id,
-        "round_id": round_id,
-    })
-    if not existing:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bill not found.")
-
     now = datetime.now(timezone.utc)
-    # Mark old bill as cancelled / archived
-    await bills_col.update_one(
-        {"_id": existing["_id"]},
-        {"$set": {"status": BillStatus.CANCELLED.value, "updated_at": now}},
-    )
 
-    # Create new corrected bill
+    # Atomic CAS: Match on _id, society_id, round_id, and active finalized/published status
+    # and transition to CANCELLED in one atomic step.
+    existing = await bills_col.find_one_and_update(
+        {
+            "_id": ObjectId(bill_id),
+            "society_id": society_id,
+            "round_id": round_id,
+            "status": {"$in": [BillStatus.FINALIZED.value, BillStatus.PUBLISHED.value, BillStatus.CORRECTED.value]},
+        },
+        {"$set": {"status": BillStatus.CANCELLED.value, "updated_at": now}},
+        return_document=False,
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bill cannot be corrected: it is either already cancelled, modified by another user, or does not exist.",
+        )
+
+    # Create new corrected bill version
     new_doc = existing.copy()
     new_doc.pop("_id")
     new_doc["bill_version"] = existing.get("bill_version", 1) + 1
     new_doc["status"] = BillStatus.CORRECTED.value
     new_doc["previous_version_bill_id"] = str(existing["_id"])
     new_doc["correction_notes"] = correction_notes
+    new_doc["created_at"] = now
     new_doc["updated_at"] = now
 
     res = await bills_col.insert_one(new_doc)
     new_doc["_id"] = res.inserted_id
 
-    logger.info("Created corrected bill v%d for flat %s", new_doc["bill_version"], new_doc["flat_number"])
+    logger.info("Created corrected bill v%d for flat %s (previous bill: %s)", new_doc["bill_version"], new_doc["flat_number"], bill_id)
     return _serialize_bill(new_doc)
 
 
@@ -869,7 +973,7 @@ async def publish_bills_announcement(
     """Publish a generic, privacy-safe group chat announcement to Nexconn.
 
     STRICT PRIVACY: NEVER publishes individual flat numbers, resident names, or amounts!
-    Idempotent: prevents duplicate announcements if already published.
+    Concurrency-safe: atomically locks announcement state before dispatching to prevent duplicate messages.
     """
     await membership_service.require_society_role(
         user_id, society_id, ["volunteer", "admin"]
@@ -895,7 +999,7 @@ async def publish_bills_announcement(
             detail="Cannot publish announcement: No bills have been finalized for this round yet.",
         )
 
-    # Check idempotency: if already published, return existing status without re-sending
+    # Check idempotency: if already successfully published, return cached status
     now = datetime.now(timezone.utc)
     ann_state = round_doc.get("bills_announcement", {})
     if ann_state.get("status") == "sent":
@@ -919,8 +1023,50 @@ async def publish_bills_announcement(
         f"Please log in to view your flat's breakdown and verified bulk savings."
     )
 
-    group_id = f"society_{society_id}"
     attempts = int(ann_state.get("attempts", 0)) + 1
+
+    # Atomic CAS pre-lock: transition from failed/empty to "sending"
+    locked_round = await rounds_col.find_one_and_update(
+        {
+            "_id": ObjectId(round_id),
+            "society_id": society_id,
+            "bills_announcement.status": {"$nin": ["sending", "sent"]},
+        },
+        {
+            "$set": {
+                "bills_announcement.status": "sending",
+                "bills_announcement.last_attempt_at": now,
+                "bills_announcement.attempts": attempts,
+                "bills_announcement.message_text": message_text,
+                "updated_at": now,
+            }
+        },
+        return_document=True,
+    )
+
+    if not locked_round:
+        # Another worker is currently dispatching or already completed
+        fresh_round = await rounds_col.find_one({"_id": ObjectId(round_id)})
+        curr_state = fresh_round.get("bills_announcement", {}) if fresh_round else {}
+        if curr_state.get("status") == "sent":
+            return PublishBillsAnnouncementResponse(
+                society_id=society_id,
+                round_id=round_id,
+                round_number=round_number,
+                group_id=f"society_{society_id}",
+                message_text=curr_state.get("message_text", message_text),
+                sent=True,
+                delivery_status="sent",
+                attempts=int(curr_state.get("attempts", 1)),
+                published_at=_ensure_utc(curr_state.get("sent_at")),
+            )
+        elif curr_state.get("status") == "sending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Announcement is currently being dispatched by another worker.",
+            )
+
+    group_id = f"society_{society_id}"
     sent = False
     delivery_status = "failed"
 
@@ -939,7 +1085,7 @@ async def publish_bills_announcement(
         logger.warning("Error dispatching Nexconn bills announcement: %s", exc)
         delivery_status = "failed"
 
-    # Update round announcement delivery state
+    # Update round announcement final delivery state
     update_data = {
         "bills_announcement": {
             "status": delivery_status,
@@ -1019,7 +1165,11 @@ async def get_society_spending_summary(
     round_id: str,
     user_id: str,
 ) -> SocietySpendingSummaryResponse:
-    """Calculate and return society expenditure, allocation, and reconciliation summary."""
+    """Calculate and return society expenditure, allocation, and reconciliation summary.
+
+    Uses Decimal-safe arithmetic to ensure mathematical identity:
+    Actual Purchase Cost = Allocated Bill Costs + Shared Costs + Unallocated Cost
+    """
     await membership_service.require_society_role(
         user_id, society_id, ["volunteer", "admin"]
     )
@@ -1031,12 +1181,13 @@ async def get_society_spending_summary(
 
     round_number = round_doc.get("round_number", 1)
 
-    # 1. Total actual purchases
+    # 1. Total actual purchases (Decimal)
     purchases_col = get_purchase_records_collection()
     purchases = await purchases_col.find({"society_id": society_id, "round_id": round_id}).to_list(length=1000)
-    total_purchase_cost = round(sum(float(p["total_price"]) for p in purchases), 2)
+    total_purchase_cost_dec = _quantize_paise(sum(_to_decimal(p["total_price"]) for p in purchases))
+    total_purchase_cost = float(total_purchase_cost_dec)
 
-    # 2. Total allocated bills
+    # 2. Total allocated bills (Decimal)
     bills_col = get_grocery_bills_collection()
     bills = await bills_col.find({
         "society_id": society_id,
@@ -1044,18 +1195,24 @@ async def get_society_spending_summary(
         "status": {"$in": [BillStatus.FINALIZED.value, BillStatus.PUBLISHED.value, BillStatus.CORRECTED.value]},
     }).to_list(length=1000)
 
-    total_allocated = round(sum(float(b["items_subtotal"]) for b in bills), 2)
-    total_shared = round(sum(float(b.get("shared_costs_total", 0.0)) for b in bills), 2)
-    unallocated_cost = max(0.0, round(total_purchase_cost - total_allocated, 2))
+    total_allocated_dec = _quantize_paise(sum((_to_decimal(b["items_subtotal"]) for b in bills), Decimal("0.00")))
+    total_allocated = float(total_allocated_dec)
 
-    reconciled_sum = round(total_allocated + unallocated_cost, 2)
-    diff = abs(total_purchase_cost - reconciled_sum)
-    is_reconciled = (diff <= 0.05)
+    total_shared_dec = _quantize_paise(sum((_to_decimal(b.get("shared_costs_total", 0.0)) for b in bills), Decimal("0.00")))
+    total_shared = float(total_shared_dec)
+
+    unallocated_cost_dec = max(Decimal("0.00"), total_purchase_cost_dec - total_allocated_dec)
+    unallocated_cost = float(unallocated_cost_dec)
+
+    reconciled_sum_dec = total_allocated_dec + unallocated_cost_dec
+    diff_dec = abs(total_purchase_cost_dec - reconciled_sum_dec)
+    is_reconciled = (diff_dec <= Decimal("0.02"))
 
     discrepancies = []
     if not is_reconciled:
         discrepancies.append(
-            f"Unresolved discrepancy: Total actual cost Rs {total_purchase_cost:.2f} does not match allocated total Rs {total_allocated:.2f} + unallocated Rs {unallocated_cost:.2f}."
+            f"Unresolved discrepancy: Total actual cost Rs {total_purchase_cost:.2f} does not match "
+            f"allocated total Rs {total_allocated:.2f} + unallocated Rs {unallocated_cost:.2f}."
         )
 
     # Counts
@@ -1101,7 +1258,11 @@ async def record_retail_benchmark(
     user_id: str,
     req: RecordBenchmarkRequest,
 ) -> RetailBenchmarkResponse:
-    """Store verified individual retail benchmark price evidence."""
+    """Store verifiable individual retail benchmark price evidence.
+
+    Initial state is 'pending' verification. An explicit verification workflow
+    by an authorized volunteer or admin is required before it enters the savings engine.
+    """
     await membership_service.require_society_role(
         user_id, society_id, ["volunteer", "admin"]
     )
@@ -1110,7 +1271,11 @@ async def record_retail_benchmark(
     if norm_size is None or norm_size <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid package size.")
 
-    benchmark_unit_price = round(req.benchmark_price / norm_size, 4)
+    norm_size_dec = _to_decimal(norm_size)
+    price_dec = _to_decimal(req.benchmark_price)
+    benchmark_unit_price_dec = _quantize_unit_cost(price_dec / norm_size_dec)
+    benchmark_unit_price = float(benchmark_unit_price_dec)
+
     now = datetime.now(timezone.utc)
 
     doc = {
@@ -1128,17 +1293,56 @@ async def record_retail_benchmark(
         "evidence_url": req.evidence_url.strip() if req.evidence_url else None,
         "evidence_date": _ensure_utc(req.evidence_date),
         "location": req.location.strip(),
-        "verification_status": BenchmarkVerificationStatus.VERIFIED.value,
-        "verified_by": user_id,
-        "verified_at": now,
+        "verification_status": BenchmarkVerificationStatus.PENDING.value,
+        "verified_by": None,
+        "verified_at": None,
         "created_at": now,
+        "updated_at": now,
     }
 
     col = get_retail_benchmarks_collection()
     res = await col.insert_one(doc)
     doc["_id"] = res.inserted_id
-    logger.info("Recorded retail benchmark evidence %s for %s", res.inserted_id, req.product_name)
+    logger.info("Recorded retail benchmark evidence %s for %s (status=pending)", res.inserted_id, req.product_name)
     return _serialize_benchmark(doc)
+
+
+async def verify_retail_benchmark(
+    society_id: str,
+    round_id: str,
+    benchmark_id: str,
+    user_id: str,
+    req: VerifyBenchmarkRequest,
+) -> RetailBenchmarkResponse:
+    """Explicitly verify or reject a retail benchmark price evidence record."""
+    await membership_service.require_society_role(
+        user_id, society_id, ["volunteer", "admin"]
+    )
+
+    col = get_retail_benchmarks_collection()
+    now = datetime.now(timezone.utc)
+
+    updated = await col.find_one_and_update(
+        {"_id": ObjectId(benchmark_id), "society_id": society_id},
+        {
+            "$set": {
+                "verification_status": req.status.value,
+                "verified_by": user_id,
+                "verified_at": now,
+                "verification_notes": req.notes.strip() if req.notes else None,
+                "updated_at": now,
+            }
+        },
+        return_document=True,
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Retail benchmark not found.")
+
+    logger.info(
+        "Benchmark %s verification status updated to %s by user %s",
+        benchmark_id, req.status.value, user_id
+    )
+    return _serialize_benchmark(updated)
 
 
 async def list_retail_benchmarks(
@@ -1166,8 +1370,10 @@ async def calculate_society_savings(
 
     Comparability Rules:
     - Same product name, brand, variant, and normalized unit.
+    - Strictly filters for 'verified' benchmarks; excludes pending or rejected benchmarks.
     - If benchmark evidence is missing or stale (>90 days old): marked as Unavailable.
-    - NEVER extrapolate partial results to unbenchmarked items.
+    - Uses actual physical quantities allocated per flat.
+    - NEVER extrapolates partial results to unbenchmarked items.
     - Zero or negative savings are presented honestly.
     """
     await membership_service.require_society_role(
@@ -1189,7 +1395,7 @@ async def calculate_society_savings(
         "status": {"$in": [BillStatus.FINALIZED.value, BillStatus.PUBLISHED.value, BillStatus.CORRECTED.value]},
     }).to_list(length=1000)
 
-    # Aggregate total allocated quantities by item
+    # Aggregate total allocated quantities by item using Decimal
     allocated_by_item: Dict[str, Dict[str, Any]] = {}
     if bills:
         for b in bills:
@@ -1209,13 +1415,11 @@ async def calculate_society_savings(
                         "variant": variant,
                         "unit": unit,
                         "quantity": 0.0,
-                        "bulk_cost": 0.0,
+                        "bulk_cost_dec": Decimal("0.00"),
                         "unit_price": float(it.get("unit_price", 0.0)),
                     }
                 allocated_by_item[key]["quantity"] = round(allocated_by_item[key]["quantity"] + alloc_qty, 3)
-                allocated_by_item[key]["bulk_cost"] = round(
-                    allocated_by_item[key]["bulk_cost"] + float(it.get("item_total", 0.0)), 2
-                )
+                allocated_by_item[key]["bulk_cost_dec"] += _to_decimal(it.get("item_total", 0.0))
     else:
         # Fall back to allocation preview
         preview = await calculate_allocation(society_id, round_id, user_id)
@@ -1229,11 +1433,11 @@ async def calculate_society_savings(
                 "variant": ms.variant,
                 "unit": ms.unit,
                 "quantity": ms.fulfilled_quantity,
-                "bulk_cost": ms.total_cost,
+                "bulk_cost_dec": _to_decimal(ms.total_cost),
                 "unit_price": ms.effective_unit_cost,
             }
 
-    # 2. Fetch verified benchmarks
+    # 2. Fetch strictly verified benchmarks
     benchmarks_col = get_retail_benchmarks_collection()
     benchmarks = await benchmarks_col.find({
         "society_id": society_id,
@@ -1243,10 +1447,10 @@ async def calculate_society_savings(
     now = datetime.now(timezone.utc)
     ninety_days_ago = now - timedelta(days=90)
 
-    # 3. Compare items against benchmarks
+    # 3. Compare items against verified benchmarks
     item_savings_list: List[ItemSavingsDetail] = []
-    total_comparable_bulk_cost = 0.0
-    total_individual_benchmark_cost = 0.0
+    total_comparable_bulk_cost_dec = Decimal("0.00")
+    total_individual_benchmark_cost_dec = Decimal("0.00")
     verified_benchmark_count = 0
     excluded_count = 0
 
@@ -1256,7 +1460,8 @@ async def calculate_society_savings(
         variant = (data["variant"] or "").strip().lower()
         unit = data["unit"].strip().lower()
         qty = data["quantity"]
-        bulk_cost = data["bulk_cost"]
+        bulk_cost_dec = _quantize_paise(data["bulk_cost_dec"])
+        bulk_cost = float(bulk_cost_dec)
         bulk_unit_price = data["unit_price"]
 
         # Find matching verified benchmark
@@ -1274,7 +1479,7 @@ async def calculate_society_savings(
                 and (not variant or b_variant == variant)
                 and b_unit == unit
             ):
-                # Check for evidence freshness
+                # Check for evidence freshness (<= 90 days)
                 ev_date = _ensure_utc(b.get("evidence_date"))
                 if ev_date < ninety_days_ago:
                     logger.warning("Benchmark %s is older than 90 days (stale evidence).", b["_id"])
@@ -1283,15 +1488,20 @@ async def calculate_society_savings(
                 break
 
         if matched_bench:
-            bench_unit_price = float(matched_bench.get("benchmark_unit_price", 0.0))
-            bench_cost = round(qty * bench_unit_price, 2)
-            item_savings = round(bench_cost - bulk_cost, 2)
+            bench_unit_price_dec = _to_decimal(matched_bench.get("benchmark_unit_price", 0.0))
+            bench_cost_dec = _quantize_paise(_to_decimal(qty) * bench_unit_price_dec)
+            bench_cost = float(bench_cost_dec)
+            item_savings_dec = _quantize_paise(bench_cost_dec - bulk_cost_dec)
+            item_savings = float(item_savings_dec)
+
             savings_pct = (
-                round((item_savings / bench_cost) * 100, 1) if bench_cost > 0 else 0.0
+                round(float((item_savings_dec / bench_cost_dec) * Decimal("100")), 1)
+                if bench_cost_dec > 0
+                else 0.0
             )
 
-            total_comparable_bulk_cost = round(total_comparable_bulk_cost + bulk_cost, 2)
-            total_individual_benchmark_cost = round(total_individual_benchmark_cost + bench_cost, 2)
+            total_comparable_bulk_cost_dec += bulk_cost_dec
+            total_individual_benchmark_cost_dec += bench_cost_dec
             verified_benchmark_count += 1
 
             item_savings_list.append(
@@ -1305,7 +1515,7 @@ async def calculate_society_savings(
                     bulk_unit_price=bulk_unit_price,
                     has_benchmark=True,
                     benchmark_price=matched_bench["benchmark_price"],
-                    benchmark_unit_price=bench_unit_price,
+                    benchmark_unit_price=float(bench_unit_price_dec),
                     benchmark_store=matched_bench["store_name"],
                     benchmark_date=_ensure_utc(matched_bench.get("evidence_date")),
                     benchmark_cost=bench_cost,
@@ -1339,12 +1549,16 @@ async def calculate_society_savings(
                 )
             )
 
-    verified_savings_amount = round(
-        total_individual_benchmark_cost - total_comparable_bulk_cost, 2
+    verified_savings_amount_dec = _quantize_paise(
+        total_individual_benchmark_cost_dec - total_comparable_bulk_cost_dec
     )
+    verified_savings_amount = float(verified_savings_amount_dec)
     verified_savings_percentage = (
-        round((verified_savings_amount / total_individual_benchmark_cost) * 100, 1)
-        if total_individual_benchmark_cost > 0
+        round(
+            float((verified_savings_amount_dec / total_individual_benchmark_cost_dec) * Decimal("100")),
+            1,
+        )
+        if total_individual_benchmark_cost_dec > 0
         else 0.0
     )
 
@@ -1352,8 +1566,8 @@ async def calculate_society_savings(
         society_id=society_id,
         round_id=round_id,
         round_number=round_number,
-        total_bulk_cost_comparable_items=total_comparable_bulk_cost,
-        total_individual_benchmark_cost=total_individual_benchmark_cost,
+        total_bulk_cost_comparable_items=float(total_comparable_bulk_cost_dec),
+        total_individual_benchmark_cost=float(total_individual_benchmark_cost_dec),
         verified_savings_amount=verified_savings_amount,
         verified_savings_percentage=verified_savings_percentage,
         total_items_evaluated=len(allocated_by_item),

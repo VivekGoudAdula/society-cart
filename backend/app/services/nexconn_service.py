@@ -62,27 +62,38 @@ async def issue_nexconn_token(user_id: str, display_name: str, avatar_url: str =
         "portraitUri": avatar_url or "",
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, headers=headers, data=data)
-            resp_data = resp.json()
+    max_attempts = 2
+    last_error: Optional[Exception] = None
 
-            if resp.status_code == 200 and resp_data.get("code") == 200:
-                token = resp_data.get("token")
-                if token:
-                    return token
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, headers=headers, data=data)
+                resp_data = resp.json()
 
-            logger.error("Failed to issue Nexconn token: HTTP %s, Body: %s", resp.status_code, resp.text)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Nexconn token issuance failed: {resp_data.get('errorMessage', 'Unknown error')}",
-            )
-    except httpx.RequestError as exc:
-        logger.error("Nexconn network request error during token issuance: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Could not reach Nexconn chat network: {str(exc)}",
-        )
+                if resp.status_code == 200 and resp_data.get("code") == 200:
+                    token = resp_data.get("token")
+                    if token:
+                        return token
+
+                logger.error(
+                    "Failed to issue Nexconn token (attempt %d/%d): HTTP %s, Body: %s",
+                    attempt, max_attempts, resp.status_code, resp.text
+                )
+                if attempt == max_attempts:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Nexconn token issuance failed: {resp_data.get('errorMessage', 'Unknown error')}",
+                    )
+        except httpx.RequestError as exc:
+            last_error = exc
+            logger.warning("Nexconn request error on attempt %d/%d: %s", attempt, max_attempts, exc)
+            if attempt == max_attempts:
+                logger.error("Nexconn network request error during token issuance: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Could not reach Nexconn chat network: {str(exc)}",
+                )
 
 
 async def create_nexconn_group(group_id: str, group_name: str, creator_user_id: str) -> bool:

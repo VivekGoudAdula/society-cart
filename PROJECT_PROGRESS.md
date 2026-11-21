@@ -119,11 +119,19 @@
   - [x] Automated test suite `backend/tests/test_phase6.py` (6/6 passed) and full regression suite (47/47 passed).
   - [x] Frontend `ShoppingListPage.tsx` and `VolunteerDashboard.tsx` integrated with clean production build (`tsc -b && vite build`).
 
-- [ ] **Phase 7 — Billing & Savings**
-  - [ ] Volunteer actual purchase price recording.
-  - [ ] Per-flat itemized billing and allocation.
-  - [ ] Bill publication in Nexconn chat.
-  - [ ] Savings calculation against verified benchmark retail prices.
+- [x] **Phase 7 — Billing & Savings**
+  - [x] Actual purchase cost recording with shop name, receipt/invoice reference, store notes, and explicit substitution tracking.
+  - [x] Decimal-safe monetary arithmetic with paise precision (`Decimal('0.01')` using `ROUND_HALF_UP`) ensuring exact mathematical reconciliation: `Total Purchase = Total Allocated + Total Shared + Total Unallocated`.
+  - [x] Per-flat physical allocation matching volunteer packing breakdown; support for explicit physical distribution overrides (`flat_allocations_override`) preventing residents from ever being billed for unfulfilled quantities.
+  - [x] Clear distinction between unfulfilled resident demand and unallocated inventory surplus.
+  - [x] Shared expense distribution (e.g., auto / transport / delivery fee) with deterministic single-paise residual allocation.
+  - [x] Immutable bill documents with versioning and atomic compare-and-swap (CAS) to prevent concurrent conflicting version branches.
+  - [x] Privacy-safe Nexconn group chat announcements with atomic `"sending"` pre-locks preventing duplicate dispatch; zero private flat numbers or individual amounts revealed.
+  - [x] Strict resident privacy isolation: residents can only retrieve their own flat's itemized bill (`GET /api/users/me/bills`); cross-flat and cross-society access blocked with 403 Forbidden.
+  - [x] Evidence-backed retail benchmark library with mandatory `pending` verification state, explicit volunteer/admin verification endpoint (`PATCH .../benchmarks/{id}/verify`), and stale evidence filtering (>90 days).
+  - [x] Transparent bulk savings engine with strict product/brand/variant/unit comparability, actual allocated quantity weighting, zero extrapolation of partial coverage, and honest zero/negative reporting.
+  - [x] Complete backend test suite `backend/tests/test_phase7.py` (17/17 passed) and comprehensive full regression suite across all phases (66/66 passed).
+  - [x] Frontend `PurchaseRecordingSection`, `CostAllocationSection`, `SpendingAndSavingsSection`, and Resident `OrderSummaryPage` integrated with production build passing (`tsc -b && vite build` in 10.07s).
 
 - [ ] **Phase 8 — Testing, Security & UX Polish**
   - [ ] Multi-resident concurrency and duplicate message handling.

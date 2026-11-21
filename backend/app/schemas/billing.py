@@ -23,6 +23,22 @@ class BenchmarkVerificationStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class FlatItemAllocationOverride(BaseModel):
+    """Explicit physical item quantity allocated to a specific flat."""
+    flat_number: str = Field(..., description="Apartment flat number")
+    item_name: str = Field(..., description="Canonical or requested item name")
+    allocated_quantity: float = Field(..., ge=0, description="Actual physical quantity allocated")
+    brand: Optional[str] = None
+    variant: Optional[str] = None
+    unit: Optional[str] = None
+
+
+class VerifyBenchmarkRequest(BaseModel):
+    """Request to verify or reject a retail benchmark price."""
+    status: BenchmarkVerificationStatus = Field(..., description="Target verification status (verified or rejected)")
+    notes: Optional[str] = Field(None, max_length=500, description="Audit verification notes")
+
+
 # ============================================================================
 # Purchase Recording Schemas
 # ============================================================================
@@ -188,6 +204,9 @@ class FinalizeBillsRequest(BaseModel):
     """Request to finalize individual bills for a round."""
     shared_costs: Optional[List[SharedCostEntry]] = Field(default_factory=list)
     rounding_policy: str = Field("deterministic_paise", description="Strategy for residual paise allocation")
+    flat_allocations_override: Optional[List[FlatItemAllocationOverride]] = Field(
+        None, description="Explicit physical quantity allocations per flat"
+    )
 
 
 class CorrectBillRequest(BaseModel):
