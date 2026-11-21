@@ -54,9 +54,12 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         """Return allowed CORS origins based on configuration."""
-        origins = [self.frontend_origin]
-        if "localhost" in self.frontend_origin:
-            origins.append(self.frontend_origin.replace("localhost", "127.0.0.1"))
+        raw_origins = [o.strip() for o in self.frontend_origin.split(",") if o.strip()]
+        origins = []
+        for origin in raw_origins:
+            origins.append(origin)
+            if "localhost" in origin:
+                origins.append(origin.replace("localhost", "127.0.0.1"))
         return list(dict.fromkeys(origins))
 
 
