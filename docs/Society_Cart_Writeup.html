@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Society Cart — Nexconn Build Challenge Write-up</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: A4;
+      margin: 15mm 18mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #334155;
+      background-color: #ffffff;
+      line-height: 1.5;
+      font-size: 13px;
+      padding: 30px;
+      max-width: 850px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0f766e;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+    .brand-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #0f766e;
+      letter-spacing: -0.5px;
+    }
+    .brand-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    .header-meta {
+      text-align: right;
+      font-size: 12px;
+      color: #475569;
+    }
+    .header-meta strong {
+      color: #0f172a;
+    }
+    .pitch-badge {
+      background: #f0fdfa;
+      border: 1px solid #0f766e;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      color: #0f766e;
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.55;
+    }
+    .pitch-badge em {
+      font-style: italic;
+      color: #0d9488;
+    }
+    h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f766e;
+      margin: 20px 0 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    p {
+      margin-bottom: 10px;
+      color: #334155;
+      text-align: justify;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px 0;
+      font-size: 11.5px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #0f766e;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+    .table-accent th {
+      background: #047857;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #f1f5f9;
+      color: #047857;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .highlight-card {
+      background: #f8fafc;
+      border-left: 4px solid #0f766e;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 12px;
+    }
+    @media print {
+      body {
+        padding: 0;
+        max-width: 100%;
+      }
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <div class="brand-title">SOCIETY CART</div>
+      <div class="brand-sub">Community-Powered Group Buying Platform for Apartment Societies</div>
+    </div>
+    <div class="header-meta">
+      <img src="data:image/png;base64,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" alt="Nexconn Logo" style="height: 20px; margin-bottom: 4px; display: block; margin-left: auto;" />
+      <div><strong>Nexconn Build Challenge 2026</strong></div>
+      <div>Official Project Write-up</div>
+      <div>App Key: <code>y745wfm8yna6v</code></div>
+    </div>
+  </header>
+
+  <div class="pitch-badge">
+    <strong>The Core Insight:</strong> India does not need another startup burning capital to deliver groceries in 10 minutes at a premium. It needs a smarter way for an entire building to buy together for less.<br/>
+    Indian families have pooled requirements and bargained for generations: <em>"Bhaiya, we're buying 30 packets together. Give us wholesale rates."</em><br/>
+    <strong>Indian aunties already figured out the business model. Society Cart gives it the technology to scale.</strong>
+  </div>
+
+  <h2>1. The Problem: The High Cost of Fragmented Buying</h2>
+  <p>
+    In a typical 100-flat apartment complex, 30 households order 5 kg of rice, cooking oil, atta, and household staples every week. Today, every family orders individually through quick-commerce or retail apps, paying full markup, packaging fees, and redundant delivery charges. When communities try to coordinate bulk purchases on generic messaging apps, the process quickly breaks down: orders get buried in chats, quantities are miscalculated, volunteers burn out managing manual spreadsheets, and flat-wise bill distribution becomes a chore.
+  </p>
+
+  <h2>2. The Solution: Conversational Group Buying Powered by Nexconn & AI</h2>
+  <p>
+    Society Cart transforms community purchasing into an effortless conversational experience. Residents drop grocery requests naturally in their building's private Nexconn group chat in English, Hindi, Telugu, or code-switched phrases. Groq AI parses the items and standardizes units, while the backend aggregates total community demand into a single wholesale shopping manifest. An active volunteer purchases in bulk, distributes the orders, and publishes itemized bills showing verified savings against retail benchmarks.
+  </p>
+
+  <h2>3. End-to-End Application Workflow</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 18%;">Lifecycle Stage</th>
+        <th style="width: 38%;">Resident / Volunteer Experience</th>
+        <th style="width: 44%;">Nexconn Chat & Backend Architecture</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Society Setup</strong></td>
+        <td>Admin creates society; residents join with invite code selecting Resident or Volunteer.</td>
+        <td>Strictly enforces single active volunteer per society via MongoDB partial unique index. Maps to persistent Nexconn group channel.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Round Opening</strong></td>
+        <td>Volunteer opens grocery round with shopping date and deadline.</td>
+        <td>Automated bot notification broadcasts round status across Nexconn channel. Real-time badge syncs across all devices.</td>
+      </tr>
+      <tr>
+        <td><strong>3. Conversational Orders</strong></td>
+        <td>Residents type natural requests (e.g. <em>"5 kg rice, 2L milk, 2 kg kandipappu kavali"</em>).</td>
+        <td>Nexconn Chat SDK broadcasts message with persistent user identity. System atomically reserves submission ID linked to Nexconn message ID.</td>
+      </tr>
+      <tr>
+        <td><strong>4. AI Understanding</strong></td>
+        <td>Resident receives instant in-line AI status chip on chat bubble.</td>
+        <td>Groq (Llama-3) extracts structured items, standardizing units. Resident confirms or corrects extracted items directly in chat.</td>
+      </tr>
+      <tr>
+        <td><strong>5. Bulk Manifest</strong></td>
+        <td>Round closes. Volunteer gets consolidated wholesale list with flat-wise packing tags.</td>
+        <td>Aggregates individual flat orders into wholesale units (e.g. 150 kg rice = 6 bags of 25 kg), unlocking bulk wholesale pricing.</td>
+      </tr>
+      <tr>
+        <td><strong>6. Billing & Savings</strong></td>
+        <td>Volunteer enters actual purchase receipts; system generates flat bills.</td>
+        <td>Calculates itemized costs and transparently demonstrates net household savings against verified supermarket retail benchmarks.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>4. Proof of Genuine Nexconn Chat SDK Integration</h2>
+  <p>
+    Society Cart uses real-time infrastructure from the Nexconn Chat SDK (packages <code>@nexconn/chat</code> and <code>@nexconn/engine</code>). We do not use simulated chat, fake polling, or boilerplate templates.
+  </p>
+  <table class="table-accent">
+    <thead>
+      <tr>
+        <th style="width: 28%;">Nexconn Feature</th>
+        <th style="width: 72%;">Technical Implementation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Nexconn App Key</strong></td>
+        <td><code>y745wfm8yna6v</code> (Active on Nexconn Agile Console, deployed in production).</td>
+      </tr>
+      <tr>
+        <td><strong>Server-Side Token Issuance</strong></td>
+        <td>Tokens issued strictly via FastAPI backend (<code>POST /api/chat/token</code>) using dynamic SHA-1 signatures with <code>NEXCONN_APP_SECRET</code>, nonce, and timestamp. The App Secret is never exposed to clients.</td>
+      </tr>
+      <tr>
+        <td><strong>Persistent User Identity</strong></td>
+        <td>Each resident's stable MongoDB ObjectId is mapped 1:1 to their Nexconn <code>userId</code>. Message history and roster lookups consistently link sender identity (Name, Flat Number, Role) across logins and reconnections.</td>
+      </tr>
+      <tr>
+        <td><strong>Scoped Group Channels</strong></td>
+        <td>Each society is isolated in its own private group channel (<code>society_{id}</code>). Channel access is strictly verified through active membership dependencies.</td>
+      </tr>
+      <tr>
+        <td><strong>Event Dispatch & Deduplication</strong></td>
+        <td>Real-time message listeners bind incoming messages to grocery order reservations using Nexconn message IDs for zero duplicate processing.</td>
+      </tr>
+      <tr>
+        <td><strong>Automated Bot Broadcasts</strong></td>
+        <td>Server-side bot triggers announce round openings, deadlines, closures, and billing publications into the group chat stream.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. Technical Stack & Security</h2>
+  <div class="highlight-card">
+    <strong>Frontend:</strong> React 19, TypeScript, Vite, Tailwind CSS, <code>@nexconn/chat</code>, <code>@nexconn/engine</code>.<br/>
+    <strong>Backend:</strong> Python FastAPI, Pydantic, Uvicorn, Async PyMongo.<br/>
+    <strong>Database:</strong> MongoDB Atlas with partial unique indexes preventing race conditions (single volunteer, single open round, atomic order reservation).<br/>
+    <strong>AI Engine:</strong> Groq API running <code>openai/gpt-oss-120b</code> with zero-temperature structured JSON extraction.<br/>
+    <strong>Deployment:</strong> Vercel SPA (Frontend with SPA rewrite routing) & Render Web Service (FastAPI production backend).
+  </div>
+
+  <h2>6. Business Model & Market Viability</h2>
+  <p>
+    <strong>Zero-Inventory Advantage:</strong> Society Cart eliminates warehouse and inventory depreciation risks. Orders are pre-funded and aggregated prior to purchase. Wholesalers eagerly offer 15–25% bulk discounts because delivering to 1 building hub is dramatically cheaper than 100 individual homes.<br/>
+    <strong>Monetization:</strong> A sustainable 3–5% platform fee on wholesale savings leaves households with significant net monthly savings while creating a lucrative recurring revenue stream per building.<br/>
+    <strong>Conclusion:</strong> Indian communities already possess the collective bargaining instinct. Society Cart provides the intelligent conversational technology to turn it into an everyday reality.
+  </p>
+
+</body>
+</html>
