@@ -1,13 +1,43 @@
+<div align="center">
+
+<p align="center">
+  <img src="docs/society-cart-logo.png" alt="Society Cart Logo" height="85" />
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/nexconn-logo.png" alt="Nexconn Logo" height="75" />
+</p>
+
 # Society Cart
+
+### **"Your Society. One Chat. One Bulk Order."**
+*Powered by the **Nexconn Chat SDK** — Built for the **Nexconn Build Challenge 2026** (Track: Social & Community)*
+
+<br/>
 
 > **"Indian aunties have been bulk-bargaining for years. Society Cart gives that proven behaviour the technology to scale, powered by Nexconn."**
 
-[![Nexconn Chat SDK](https://img.shields.io/badge/Nexconn-Chat_SDK_v26.5.1-0ea5e9.svg)](https://docs.nexconn.ai)
-[![React 19](https://img.shields.io/badge/Frontend-React_19_+_Vite_6-61dafb.svg)](https://react.dev/)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI_+_Python_3.13-009688.svg)](https://fastapi.tiangolo.com/)
-[![MongoDB](https://img.shields.io/badge/Database-MongoDB_Atlas-47A248.svg)](https://www.mongodb.com/)
-[![Groq AI](https://img.shields.io/badge/AI_Engine-Groq_Cloud_LLM-f55036.svg)](https://groq.com/)
-[![Live Demo](https://img.shields.io/badge/Demo-societycart.vercel.app-23865b.svg)](https://societycart.vercel.app/)
+<br/>
+
+[![Nexconn Chat SDK](https://img.shields.io/badge/Powered%20By-Nexconn%20Chat%20SDK%20v26.5.1-0ea5e9?style=for-the-badge&logo=chat&logoColor=white)](https://docs.nexconn.ai)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-societycart.vercel.app-23865b?style=for-the-badge&logo=vercel&logoColor=white)](https://societycart.vercel.app/)
+[![React 19](https://img.shields.io/badge/Frontend-React%2019%20+%20Vite%206-61dafb?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20+%20Python-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![MongoDB Atlas](https://img.shields.io/badge/Database-MongoDB%20Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Groq AI](https://img.shields.io/badge/AI%20Extraction-Groq%20Cloud%20LLM-f55036?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
+
+</div>
+
+---
+
+> [!IMPORTANT]
+> ### 🚀 Nexconn Chat SDK as the Core Product Backbone
+> **Society Cart is built natively on top of the Nexconn Chat SDK (`@nexconn/chat` and `@nexconn/engine` v26.5.1).**
+> Every resident grocery order, community conversation, automated system bot announcement, and real-time buying round lifecycle event flows directly through private, persistent **Nexconn Society Group Channels** (`society_<id>`).
+> 
+> - **Production Nexconn App Key**: `y745wfm8yna6v` *(Singapore Data Center: `AreaCode.SG`)*
+> - **Real-Time Edge Network**: All messages and member events are synchronized live with zero-trust server token issuance (`/user/getToken.json`).
+> - **Zero Mocking**: 100% real, verified Nexconn Chat SDK implementation across both frontend React and backend FastAPI services.
+
+---
 
 ---
 
@@ -81,7 +111,16 @@ All screenshots are located under [`/docs/screenshots/`](file:///c:/HACKATHONS/7
 
 ## 5. Nexconn Chat SDK Integration (Deep Dive)
 
-Judges can verify the real, deep usage of the **Nexconn Web Chat SDK** across both client and server layers. Society Cart does not use mock chat widgets: every message, channel, token, and system announcement passes through the live Nexconn edge network.
+<div align="center">
+  <img src="docs/nexconn-logo.png" alt="Nexconn Logo" width="220" />
+  <br/>
+  <b>Core Real-Time Communication Engine for Society Cart</b>
+</div>
+
+<br/>
+
+> [!TIP]
+> **Judges Verification Note**: Society Cart does not use mock chat widgets or simulated WebSockets. Every single resident message, group channel synchronization, access token issuance, and system announcement passes through the live **Nexconn Edge Network** via the official `@nexconn/chat` and `@nexconn/engine` Web SDKs.
 
 ### Nexconn Packages Used
 - **`@nexconn/chat`** (`v26.5.1`): Manages engine initialization, group channels, message streaming, event listeners, and channel query pagination.
@@ -564,6 +603,6 @@ Society Cart leverages natural community virality:
 
 - **Challenge**: [Nexconn Build Challenge 2026](https://nexconn.ai)
 - **Track**: **Social & Community**
-- **Developed by**: Team Society Cart (`[add names]`)
+- **Developed by**: **Vivek Goud Adula** ([@VivekGoudAdula](https://github.com/VivekGoudAdula))
 
 > *"The aunties already figured out the business model. Society Cart gives it the technology to scale."*
