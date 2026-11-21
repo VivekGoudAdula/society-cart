@@ -113,7 +113,15 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
             name="idx_memberships_society_flat_active_unique",
         )
 
-        # 3. Fast lookup indexes for society and user queries
+        # 3. Enforce strictly at most one active volunteer per society
+        await db.memberships.create_index(
+            [("society_id", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"role": "volunteer", "is_active": True},
+            name="idx_memberships_society_volunteer_active_unique",
+        )
+
+        # 4. Fast lookup indexes for society and user queries
         await db.memberships.create_index(
             [("society_id", ASCENDING)],
             name="idx_memberships_society_id",

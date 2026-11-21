@@ -102,7 +102,26 @@ async def assign_member_role(
             detail="Cannot reassign the society administrator role.",
         )
 
-    await col.update_one(mq, {"$set": {"role": new_role}})
+    clean_role = new_role.strip().lower()
+    if clean_role not in ("volunteer", "resident"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role. Must be 'volunteer' or 'resident'.",
+        )
+
+    # Strictly enforce only one active volunteer per society
+    if clean_role == "volunteer":
+        await col.update_many(
+            {
+                "society_id": society_id,
+                "role": "volunteer",
+                "is_active": True,
+                "_id": {"$ne": target_mem["_id"]},
+            },
+            {"$set": {"role": "resident"}},
+        )
+
+    await col.update_one(mq, {"$set": {"role": clean_role}})
     updated_doc = await col.find_one(mq)
     return _serialize_membership(updated_doc)
 

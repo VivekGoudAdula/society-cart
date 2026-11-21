@@ -23,7 +23,7 @@ type SetupMode = 'create' | 'join';
  */
 export const SocietySetupPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, register, createSociety, joinSociety, switchRole } = useApp();
+  const { isAuthenticated, register, createSociety, joinSociety } = useApp();
 
   const [mode, setMode] = useState<SetupMode>('create');
   const [isSuccess, setIsSuccess] = useState(false);
@@ -41,6 +41,7 @@ export const SocietySetupPage: React.FC = () => {
   // Form State: Join
   const [inviteCode, setInviteCode] = useState('');
   const [joinFlat, setJoinFlat] = useState('');
+  const [joinRole, setJoinRole] = useState<'resident' | 'volunteer'>('resident');
 
   // Form State: Auth if not logged in
   const [authName, setAuthName] = useState('');
@@ -109,6 +110,7 @@ export const SocietySetupPage: React.FC = () => {
         const res = await joinSociety({
           invite_code: inviteCode.trim(),
           flat_number: joinFlat.trim(),
+          role: joinRole,
         });
 
         if (!res.success || !res.society) {
@@ -137,8 +139,11 @@ export const SocietySetupPage: React.FC = () => {
   };
 
   const handleFinish = () => {
-    switchRole(mode === 'create' ? 'volunteer' : 'resident');
-    navigate(mode === 'create' ? '/volunteer' : '/resident');
+    if (mode === 'create' || joinRole === 'volunteer') {
+      navigate('/volunteer');
+    } else {
+      navigate('/resident');
+    }
   };
 
   if (isSuccess && createdSociety) {
@@ -348,6 +353,49 @@ export const SocietySetupPage: React.FC = () => {
                 placeholder="e.g. C-402 or B-104"
                 required
               />
+
+              <div className="space-y-2 pt-1">
+                <label className="block text-xs font-bold text-[#252824]">
+                  Select Your Role in this Society
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setJoinRole('resident')}
+                    className={`flex flex-col text-left p-3 rounded-2xl border transition-all ${
+                      joinRole === 'resident'
+                        ? 'border-[#174D3A] bg-[#EBF2EE] ring-2 ring-[#174D3A]/15'
+                        : 'border-[#EBE8DF] bg-[#FAF9F6] hover:bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-[#252824]">Resident</span>
+                      <span className={`h-2.5 w-2.5 rounded-full ${joinRole === 'resident' ? 'bg-[#174D3A]' : 'bg-[#DFDAD0]'}`} />
+                    </div>
+                    <p className="text-[11px] text-[#827F76] leading-tight">
+                      Submit grocery needs in chat, join bulk wholesale orders, and view itemized bills.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setJoinRole('volunteer')}
+                    className={`flex flex-col text-left p-3 rounded-2xl border transition-all ${
+                      joinRole === 'volunteer'
+                        ? 'border-[#174D3A] bg-[#EBF2EE] ring-2 ring-[#174D3A]/15'
+                        : 'border-[#EBE8DF] bg-[#FAF9F6] hover:bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-[#252824]">Volunteer</span>
+                      <span className={`h-2.5 w-2.5 rounded-full ${joinRole === 'volunteer' ? 'bg-[#174D3A]' : 'bg-[#DFDAD0]'}`} />
+                    </div>
+                    <p className="text-[11px] text-[#827F76] leading-tight">
+                      Manage order drives, compile shopping lists, and execute shopping runs. (Limit 1).
+                    </p>
+                  </button>
+                </div>
+              </div>
             </>
           )}
 

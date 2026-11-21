@@ -199,12 +199,32 @@ async def join_society(
             detail=f"Flat {normalized_flat} is already registered by another resident in this society.",
         )
 
+    # 3. Validate requested role and enforce single active volunteer rule
+    requested_role = (request.role or "resident").strip().lower()
+    if requested_role not in ("resident", "volunteer"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role. You can only join as 'resident' or 'volunteer'.",
+        )
+
+    if requested_role == "volunteer":
+        existing_volunteer = await memberships_col.find_one({
+            "society_id": society_id_str,
+            "role": "volunteer",
+            "is_active": True,
+        })
+        if existing_volunteer:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This society already has an active volunteer. You can join as a resident.",
+            )
+
     now = datetime.now(timezone.utc)
     membership_doc = {
         "user_id": user_id,
         "society_id": society_id_str,
         "flat_number": normalized_flat,
-        "role": "resident",
+        "role": requested_role,
         "joined_at": now,
         "is_active": True,
     }

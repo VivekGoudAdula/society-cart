@@ -135,7 +135,7 @@ export const api = {
         body: JSON.stringify(payload),
       }),
 
-    join: (payload: { invite_code: string; flat_number: string }) =>
+    join: (payload: { invite_code: string; flat_number: string; role?: string }) =>
       request<{ society: any; membership: any }>('/api/societies/join', {
         method: 'POST',
         body: JSON.stringify(payload),

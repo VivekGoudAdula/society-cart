@@ -24,6 +24,7 @@ class SocietyJoinRequest(BaseModel):
 
     invite_code: str = Field(..., min_length=4, max_length=30, description="Society invitation code")
     flat_number: str = Field(..., min_length=1, max_length=20, description="Resident's flat number")
+    role: Optional[str] = Field("resident", description="Intended membership role: 'resident' or 'volunteer'")
 
 
 class SocietyResponse(BaseModel):

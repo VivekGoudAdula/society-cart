@@ -14,17 +14,11 @@ import {
   ApiOrderRound,
 } from '../types';
 import {
-  mockSociety,
-  mockResidentUser,
-  mockVolunteerUser,
-  mockActiveRound,
   mockPastRounds,
-  mockGroceryItems,
-  mockChatMessages,
   mockResidentBill,
-  mockNotifications,
 } from '../data/mockData';
 import { api, getAuthToken, setAuthToken } from '../services/api';
+import { nexconnClient } from '../services/nexconn/nexconnClient';
 
 interface AppContextType {
   // Auth & Identity
@@ -52,6 +46,7 @@ interface AppContextType {
   joinSociety: (data: {
     invite_code: string;
     flat_number: string;
+    role?: string;
   }) => Promise<{ success: boolean; society?: ApiSociety; membership?: ApiMembership; error?: string }>;
 
   // Current profile & roles
@@ -102,9 +97,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentRole, setCurrentRole] = useState<UserRole>('resident');
   const [currentActiveRound, setCurrentActiveRound] = useState<ApiOrderRound | null>(null);
   const [isLoadingActiveRound, setIsLoadingActiveRound] = useState(false);
-  const [groceryItems, setGroceryItems] = useState<GroceryItem[]>(mockGroceryItems);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
-  const [notifications, setNotifications] = useState<ActivityNotification[]>(mockNotifications);
+  const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [notifications, setNotifications] = useState<ActivityNotification[]>([]);
 
   const isAuthenticated = useMemo(() => !!user, [user]);
 
@@ -224,11 +219,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // Ignore network errors on logout
     }
+    try {
+      await nexconnClient.disconnect();
+    } catch {
+      // Ignore disconnect errors
+    }
     setAuthToken(null);
     setUser(null);
     setUserSocieties([]);
     setActiveSocietyPair(null);
     setCurrentRole('resident');
+    setCurrentActiveRound(null);
+    setChatMessages([]);
+    setGroceryItems([]);
+    setNotifications([]);
     localStorage.removeItem('society_cart_active_society_id');
   };
 
@@ -256,7 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   /**
    * Join an apartment society with an invite code and flat number.
    */
-  const joinSociety = async (data: { invite_code: string; flat_number: string }) => {
+  const joinSociety = async (data: { invite_code: string; flat_number: string; role?: string }) => {
     try {
       const res = await api.societies.join(data);
       await refreshSession();
@@ -266,7 +270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Derive current user profile from real user + membership when authenticated, or mock when demo
+  // Derive current user profile from real user + membership when authenticated
   const currentUser: UserProfile = useMemo(() => {
     if (user && activeSocietyPair) {
       return {
@@ -281,8 +285,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         avatarUrl: undefined,
       };
     }
-    // Fallback for instant demo browsing
-    return currentRole === 'resident' ? mockResidentUser : mockVolunteerUser;
+    // Clean unauthenticated fallback
+    return {
+      id: '',
+      name: 'Guest Resident',
+      flatNumber: '',
+      societyId: '',
+      societyName: '',
+      role: 'resident',
+      email: '',
+      phone: '',
+    };
   }, [user, activeSocietyPair, currentRole]);
 
   // Derive society data
@@ -295,11 +308,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         city: activeSocietyPair.society.city,
         totalFlats: activeSocietyPair.society.total_flats || 100,
         inviteCode: activeSocietyPair.society.invite_code,
-        activeRoundId: 'round_012',
+        activeRoundId: currentActiveRound?.id || '',
       };
     }
-    return mockSociety;
-  }, [activeSocietyPair]);
+    return {
+      id: '',
+      name: '',
+      locality: '',
+      city: '',
+      totalFlats: 0,
+      inviteCode: '',
+      activeRoundId: '',
+    };
+  }, [activeSocietyPair, currentActiveRound?.id]);
 
   const switchRole = (newRole: UserRole) => {
     setCurrentRole(newRole);
@@ -329,10 +350,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
     return {
-      ...mockActiveRound,
-      status: 'closed',
+      id: '',
+      roundNumber: 0,
       title: 'No Active Grocery Round',
+      status: 'closed',
       deadlineText: 'Ordering Closed',
+      shopVisitDate: 'Pending Next Round',
+      volunteerName: 'Society Volunteer',
+      volunteerFlat: 'Volunteer Desk',
+      participatingFlatsCount: 0,
+      totalItemsCount: 0,
+      estimatedTotalValue: 0,
     };
   }, [currentActiveRound]);
 

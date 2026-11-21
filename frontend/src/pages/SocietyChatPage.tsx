@@ -9,7 +9,6 @@ import {
   WifiOff,
   Loader2,
   AlertCircle,
-  ShoppingCart,
   Lock,
   Eye,
   HelpCircle,
@@ -33,7 +32,6 @@ export const SocietyChatPage: React.FC = () => {
 
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [asGroceryOrder, setAsGroceryOrder] = useState(true);
   const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -53,9 +51,11 @@ export const SocietyChatPage: React.FC = () => {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 8000);
+    const hasProcessing = residentOrders.some((o) => o.status === 'processing');
+    const intervalTime = hasProcessing ? 2000 : 7000;
+    const interval = setInterval(fetchOrders, intervalTime);
     return () => clearInterval(interval);
-  }, [fetchOrders]);
+  }, [fetchOrders, residentOrders]);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -65,7 +65,7 @@ export const SocietyChatPage: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const isRoundOpen = activeRound.status === 'open';
+  const isRoundOpen = activeRound.status === 'open' && activeRound.roundNumber > 0;
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,14 +76,15 @@ export const SocietyChatPage: React.FC = () => {
     const sentText = inputMessage;
     setInputMessage('');
 
-    const res = await sendMessage(sentText, asGroceryOrder && isRoundOpen);
+    const res = await sendMessage(sentText);
     setIsSending(false);
 
     if (!res.success) {
       setInputMessage(sentText);
       setSendError(res.error || 'Failed to deliver message to Nexconn channel. Please try again.');
     } else {
-      setTimeout(fetchOrders, 2500);
+      setTimeout(fetchOrders, 1200);
+      setTimeout(fetchOrders, 3000);
     }
   };
 
@@ -119,17 +120,19 @@ export const SocietyChatPage: React.FC = () => {
               <h2 className="text-sm sm:text-base font-bold text-[#252824]">{society?.name || 'Society Cart'} Group Chat</h2>
               <Badge
                 size="sm"
-                variant={activeRound.status === 'open' ? 'primary' : 'neutral'}
-                pulseDot={activeRound.status === 'open'}
+                variant={isRoundOpen ? 'primary' : 'neutral'}
+                pulseDot={isRoundOpen}
               >
-                Round #{activeRound.roundNumber} {activeRound.status.toUpperCase()}
+                {isRoundOpen
+                  ? `Round #${activeRound.roundNumber} OPEN`
+                  : 'ORDERING CLOSED'}
               </Badge>
             </div>
             <p className="text-[11px] text-[#827F76] flex items-center gap-2 mt-0.5">
-              <span>{society?.totalFlats || '100+'} Flats</span>
+              <span>{society?.totalFlats ? `${society.totalFlats} Flats` : 'Community'}</span>
               <span>•</span>
               <span className="flex items-center gap-1 text-[#174D3A] font-semibold">
-                <Clock className="h-3 w-3" /> Closes {activeRound.deadlineText}
+                <Clock className="h-3 w-3" /> {isRoundOpen ? `Closes ${activeRound.deadlineText}` : 'Ordering Closed'}
               </span>
             </p>
           </div>
@@ -279,7 +282,7 @@ export const SocietyChatPage: React.FC = () => {
             </div>
             <h3 className="text-xs font-bold text-[#252824]">Welcome to {society?.name || 'Society Cart'} Chat!</h3>
             <p className="text-[11px] text-[#827F76] max-w-sm mx-auto">
-              No messages posted in this round yet. Post your grocery requirements in plain text to pool bulk wholesale orders!
+              No messages posted in this society yet. Post your grocery requirements in plain text to pool bulk wholesale orders!
             </p>
           </div>
         )}
@@ -288,6 +291,10 @@ export const SocietyChatPage: React.FC = () => {
           const isCurrentUser = msg.isSelf;
           const isVolunteer = msg.senderRole === 'volunteer';
           const isBot = msg.isSystemBot || msg.senderRole === 'bot';
+
+          const linkedOrder = residentOrders.find(
+            (o) => o.message_id === msg.id || (o.user_id === msg.senderId && o.raw_text?.trim() === msg.text?.trim())
+          );
 
           // Bot / AI Assistant Interpretation Card
           if (isBot) {
@@ -369,15 +376,54 @@ export const SocietyChatPage: React.FC = () => {
                     isCurrentUser ? 'text-white/80 justify-end' : 'text-[#827F76] justify-start'
                   }`}
                 >
-                  <span className="font-bold">{isCurrentUser ? 'You' : msg.senderName}</span>
+                  <span className="font-bold">{isCurrentUser ? `${msg.senderName} (You)` : msg.senderName}</span>
                   {msg.senderFlat && <span>• Flat {msg.senderFlat}</span>}
-                  {msg.isGroceryOrder && (
+
+                  {/* Live AI Grocery Status Badges */}
+                  {linkedOrder ? (
+                    linkedOrder.status === 'processing' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 animate-pulse">
+                        <Sparkles className="h-3 w-3 text-amber-600 animate-spin" /> AI understanding...
+                      </span>
+                    ) : linkedOrder.status === 'needs_clarification' ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrderForReview(linkedOrder)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition-colors shadow-2xs"
+                      >
+                        <HelpCircle className="h-3 w-3" /> Clarify Now
+                      </button>
+                    ) : linkedOrder.status === 'pending_review' || linkedOrder.status === 'awaiting_confirmation' ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrderForReview(linkedOrder)}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors shadow-2xs ${
+                          isCurrentUser
+                            ? 'bg-white/20 text-white hover:bg-white/30'
+                            : 'bg-[#EBF2EE] text-[#174D3A] border border-[#174D3A]/30 hover:bg-[#174D3A] hover:text-white'
+                        }`}
+                      >
+                        <Eye className="h-3 w-3" /> Review ({linkedOrder.items.length})
+                      </button>
+                    ) : linkedOrder.status === 'confirmed' ? (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        isCurrentUser ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      }`}>
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Confirmed ({linkedOrder.items.length})
+                      </span>
+                    ) : linkedOrder.status === 'rejected' ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                        Rejected
+                      </span>
+                    ) : null
+                  ) : msg.isGroceryOrder ? (
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                       isCurrentUser ? 'bg-white/20 text-white' : 'bg-[#EBF2EE] text-[#174D3A] border border-[#174D3A]/20'
                     }`}>
                       🛒 Order
                     </span>
-                  )}
+                  ) : null}
+
                   <span>• {msg.timestamp}</span>
                 </div>
                 <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
@@ -403,37 +449,27 @@ export const SocietyChatPage: React.FC = () => {
         ))}
       </div>
 
-      {/* 6. Message Input Bar with Order Mode Switcher */}
+      {/* 6. Message Input Bar with Automatic AI Parsing */}
       <form onSubmit={handleSend} className="p-3 sm:p-4 bg-white border-t border-[#EBE8DF]">
         <div className="flex flex-col gap-2">
-          {/* Submission Mode Selector */}
+          {/* Status Subtitle */}
           <div className="flex items-center justify-between text-xs px-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-[#827F76]">
               {isRoundOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setAsGroceryOrder(!asGroceryOrder)}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                    asGroceryOrder
-                      ? 'bg-[#EBF2EE] text-[#174D3A] border border-[#174D3A]/25'
-                      : 'bg-[#F3F0E8] text-[#827F76] border border-[#DFDAD0]'
-                  }`}
-                >
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  <span>{asGroceryOrder ? '🛒 Grocery Order Mode (Active)' : '💬 Regular Chat Mode'}</span>
-                </button>
+                <>
+                  <Sparkles className="h-3.5 w-3.5 text-[#174D3A]" />
+                  <span className="font-semibold text-[#174D3A]">
+                    Round #{activeRound.roundNumber} Open:
+                  </span>
+                  <span>Natural grocery messages (English/Telugu/Hindi) are automatically structured by AI</span>
+                </>
               ) : (
-                <div className="flex items-center gap-1.5 text-[#827F76] font-medium">
-                  <Lock className="h-3.5 w-3.5" />
-                  <span>Submissions closed for Round #{activeRound.roundNumber}</span>
-                </div>
+                <>
+                  <Lock className="h-3.5 w-3.5 text-[#827F76]" />
+                  <span>Grocery round is currently closed. Community discussion is active.</span>
+                </>
               )}
             </div>
-            {isRoundOpen && asGroceryOrder && (
-              <span className="text-[11px] text-[#174D3A] font-semibold hidden sm:inline">
-                Links to Round #{activeRound.roundNumber} bulk manifest
-              </span>
-            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -443,8 +479,8 @@ export const SocietyChatPage: React.FC = () => {
               onChange={(e) => setInputMessage(e.target.value)}
               disabled={isSending}
               placeholder={
-                isRoundOpen && asGroceryOrder
-                  ? `Submit grocery items for Flat ${currentUser.flatNumber} (e.g. 5 kg rice, 2L oil)...`
+                isRoundOpen
+                  ? `Type grocery items (e.g. 5 kg rice, 2L oil) or chat message...`
                   : `Message ${society?.name || 'society'} group chat...`
               }
               className="flex-1 rounded-2xl border border-[#DFDAD0] bg-[#FAF9F6] px-4 py-3 text-sm text-[#252824] placeholder:text-[#827F76]/60 focus:bg-white focus:border-[#174D3A] focus:outline-none focus:ring-2 focus:ring-[#174D3A]/15 transition-all"
@@ -452,11 +488,7 @@ export const SocietyChatPage: React.FC = () => {
             <button
               type="submit"
               disabled={!inputMessage.trim() || isSending}
-              className={`flex h-12 px-5 shrink-0 items-center justify-center gap-2 rounded-2xl text-white font-medium text-xs sm:text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm ${
-                isRoundOpen && asGroceryOrder
-                  ? 'bg-[#174D3A] hover:bg-[#113A2B] shadow-[#174D3A]/20'
-                  : 'bg-[#252824] hover:bg-black'
-              }`}
+              className="flex h-12 px-5 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#174D3A] hover:bg-[#113A2B] text-white font-medium text-xs sm:text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-[#174D3A]/20"
               aria-label="Send message"
             >
               {isSending ? (
@@ -464,9 +496,7 @@ export const SocietyChatPage: React.FC = () => {
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  <span className="hidden sm:inline font-bold">
-                    {isRoundOpen && asGroceryOrder ? 'Order' : 'Send'}
-                  </span>
+                  <span className="hidden sm:inline font-bold">Send</span>
                 </>
               )}
             </button>

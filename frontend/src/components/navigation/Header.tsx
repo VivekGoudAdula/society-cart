@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Repeat, ShieldCheck, User, ChevronDown } from 'lucide-react';
+import { Bell, ShieldCheck, User, ChevronDown } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../common/Badge';
 
@@ -10,7 +10,6 @@ export const Header: React.FC = () => {
   const {
     currentUser,
     currentRole,
-    switchRole,
     society,
     userSocieties,
     setActiveSocietyId,
@@ -101,20 +100,8 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Right: Quick Role Toggle & Notifications */}
+      {/* Right: Notifications */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Role Toggle Button */}
-        <button
-          onClick={() => switchRole(currentRole === 'resident' ? 'volunteer' : 'resident')}
-          className="flex items-center gap-1.5 rounded-xl border border-[#DFDAD0] bg-[#FAF9F6] px-2.5 py-1.5 text-xs font-semibold text-[#252824] hover:bg-[#F3F0E8] transition-colors"
-          title="Switch perspective"
-        >
-          <Repeat className="h-3.5 w-3.5 text-[#174D3A]" />
-          <span className="hidden md:inline">
-            Perspective: <strong className="capitalize text-[#174D3A]">{currentRole}</strong>
-          </span>
-        </button>
-
         {/* Notifications Dropdown Container */}
         <div className="relative">
           <button

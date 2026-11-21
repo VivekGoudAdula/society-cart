@@ -5,7 +5,6 @@ import {
   MessageSquare,
   ShoppingCart,
   Receipt,
-  Repeat,
   LogOut,
   Building2,
 } from 'lucide-react';
@@ -18,18 +17,8 @@ import { Badge } from '../common/Badge';
  * clear navigation groups, role-aware visibility, and tactile interactive elements.
  */
 export const Sidebar: React.FC = () => {
-  const { currentUser, currentRole, switchRole, society, activeRound, logout } = useApp();
+  const { currentUser, currentRole, society, activeRound, logout } = useApp();
   const navigate = useNavigate();
-
-  const handleRoleToggle = () => {
-    if (currentRole === 'resident') {
-      switchRole('volunteer');
-      navigate('/volunteer');
-    } else {
-      switchRole('resident');
-      navigate('/resident');
-    }
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -168,23 +157,8 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Section: Role Switcher & User Profile */}
-      <div className="pt-4 border-t border-[#EBE8DF] space-y-3">
-        {/* Role Switcher Pill */}
-        <button
-          onClick={handleRoleToggle}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold border border-dashed border-[#174D3A]/30 bg-[#EBF2EE]/60 text-[#174D3A] hover:bg-[#EBF2EE] transition-colors"
-          title="Click to toggle perspective"
-        >
-          <div className="flex items-center gap-2">
-            <Repeat className="h-3.5 w-3.5 text-[#174D3A]" />
-            <span>Switch to {currentRole === 'resident' ? 'Volunteer' : 'Resident'}</span>
-          </div>
-          <span className="text-[10px] bg-[#174D3A] text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
-            VIEW
-          </span>
-        </button>
-
+      {/* Bottom Section: User Profile */}
+      <div className="pt-4 border-t border-[#EBE8DF]">
         {/* User Card */}
         <div className="flex items-center justify-between px-1.5 pt-1">
           <div className="flex items-center gap-2.5 min-w-0">

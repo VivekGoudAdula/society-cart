@@ -3,7 +3,7 @@ import { useApp } from './AppContext';
 import { api } from '../services/api';
 import { nexconnClient } from '../services/nexconn/nexconnClient';
 import { NexconnChatMessage, NexconnConnectionState } from '../services/nexconn/nexconnTypes';
-import { mockChatMessages } from '../data/mockData';
+import { isLikelyGroceryMessage } from '../utils/groceryDetector';
 
 interface ChatContextType {
   connectionState: NexconnConnectionState;
@@ -14,6 +14,7 @@ interface ChatContextType {
   sendMessage: (text: string, asGroceryOrder?: boolean) => Promise<{ success: boolean; error?: string }>;
   refreshHistory: () => Promise<void>;
   reconnect: () => Promise<void>;
+  clearChat: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -40,6 +41,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const memberLookupRef = useRef<Record<string, { name: string; flatNumber: string; role?: string }>>({});
 
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setActiveGroupId(null);
+    setConnectionState('disconnected');
+    memberLookupRef.current = {};
+    nexconnClient.disconnect();
+  }, []);
+
   /**
    * Refreshes the resident member lookup map to populate sender names and flat numbers.
    */
@@ -55,6 +64,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
       memberLookupRef.current = map;
+      nexconnClient.setMemberLookup(map);
     } catch {
       // Fallback: lookup remains empty if unauthenticated
     }
@@ -133,25 +143,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const connectToSocietyChat = async () => {
       if (!isAuthenticated || !activeSocietyPair?.society.id) {
-        // Fallback for demo preview
         setConnectionState('disconnected');
         setActiveGroupId(null);
-        setMessages(
-          mockChatMessages.map((m) => ({
-            id: m.id,
-            senderId: m.senderId,
-            senderName: m.senderName,
-            senderRole: m.senderRole,
-            senderFlat: m.senderFlat,
-            avatarUrl: m.avatarUrl,
-            timestamp: m.timestamp,
-            sentTime: Date.now(),
-            text: m.text,
-            isSelf: m.senderId === currentUser.id,
-            isSystemBot: m.senderRole === 'bot',
-            structuredItems: m.structuredItems,
-          }))
-        );
+        setMessages([]);
+        nexconnClient.disconnect();
         return;
       }
 
@@ -159,13 +154,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
 
       try {
-        // 1. Fetch user-specific chat token and channel credentials from backend
+        // 1. Refresh member roster to display sender identities accurately
+        await updateMemberLookup(societyId);
+
+        // 2. Fetch user-specific chat token and channel credentials from backend
         const tokenRes = await api.chat.getToken(societyId);
         if (!isSubscribed) return;
         setActiveGroupId(tokenRes.group_id);
-
-        // 2. Refresh member roster to display sender identities accurately
-        await updateMemberLookup(societyId);
 
         // 3. Initialize Nexconn SDK with public App Key
         nexconnClient.initialize(tokenRes.app_key);
@@ -176,9 +171,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!isSubscribed) return;
           setConnectionState(state);
 
-          // Automatic Missed Message Recovery on Reconnection:
-          // If transitioning from reconnecting/disconnected/error to connected,
-          // automatically pull the latest message history and deduplicate.
           if (state === 'connected' && prevConnectionState !== 'connected' && prevConnectionState !== 'connecting') {
             refreshHistory();
           }
@@ -193,7 +185,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setMessages((prev) => {
-            // Avoid duplicate message insertions
             if (prev.some((m) => m.id === newMsg.id)) {
               return prev;
             }
@@ -239,46 +230,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isAuthenticated, activeSocietyPair?.society.id, user?.id, refreshHistory]);
 
   /**
-   * Sends a confirmed text message to the society's group chat, optionally associating
-   * it as an active grocery order submission.
+   * Sends a text message to the society's group chat.
+   * If an active grocery round is open, grocery-related requests automatically
+   * trigger backend reservation and AI extraction without manual user friction.
    */
   const sendMessage = async (
     text: string,
-    asGroceryOrder: boolean = false
+    asGroceryOrder?: boolean
   ): Promise<{ success: boolean; error?: string }> => {
     if (!text.trim()) return { success: false, error: 'Message cannot be empty.' };
 
-    if (asGroceryOrder) {
-      if (!currentActiveRound || currentActiveRound.status !== 'open') {
-        return {
-          success: false,
-          error: 'Grocery submissions are currently closed. No active round is accepting orders.',
-        };
-      }
-    }
+    const isRoundOpen = currentActiveRound?.status === 'open';
+    const isGrocery = isRoundOpen && (asGroceryOrder !== undefined ? asGroceryOrder : isLikelyGroceryMessage(text));
 
     if (!isAuthenticated || !activeGroupId) {
-      // In simulated demo mode, append message locally
-      const simulated: NexconnChatMessage = {
-        id: `sim_${Date.now()}`,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        senderFlat: currentUser.flatNumber,
-        senderRole: currentUser.role,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        sentTime: Date.now(),
-        text: text.trim(),
-        isSelf: true,
-        isSystemBot: false,
-        isGroceryOrder: asGroceryOrder,
-      };
-      setMessages((prev) => [...prev, simulated]);
-      return { success: true };
+      return { success: false, error: 'You are not connected to this society chat.' };
     }
 
     try {
       let clientSubmissionId: string | null = null;
-      const isGrocerySubmission = asGroceryOrder && !!currentActiveRound && !!activeSocietyPair?.society.id;
+      const isGrocerySubmission = isGrocery && !!activeSocietyPair?.society.id && !!currentActiveRound;
 
       // 1. Race-Safe Reservation Step: Pre-register order with backend before chat dispatch
       if (isGrocerySubmission) {
@@ -310,7 +281,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: currentUser.role,
         });
       } catch (sendErr: any) {
-        // If message sending failed, mark reservation as failed to keep state consistent
         if (isGrocerySubmission && clientSubmissionId) {
           api.rounds
             .failSubmission(activeSocietyPair!.society.id, currentActiveRound!.id, clientSubmissionId, {
@@ -368,6 +338,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendMessage,
         refreshHistory,
         reconnect,
+        clearChat,
       }}
     >
       {children}

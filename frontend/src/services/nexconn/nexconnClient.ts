@@ -26,9 +26,17 @@ class NexconnClientService {
   private activeGroupId = '';
   private activeToken = '';
   private connectionState: NexconnConnectionState = 'disconnected';
+  private memberLookup: Record<string, { name: string; flatNumber: string; role?: string }> = {};
 
   private stateListeners = new Set<ConnectionStateListener>();
   private messageListeners = new Set<MessageListener>();
+
+  /**
+   * Sets or updates the society member lookup table for resolving sender details.
+   */
+  public setMemberLookup(lookup: Record<string, { name: string; flatNumber: string; role?: string }>): void {
+    this.memberLookup = { ...lookup };
+  }
 
   /**
    * Initializes the Nexconn SDK once during the application lifecycle.
@@ -75,7 +83,7 @@ class NexconnClientService {
             if (!messages || messages.length === 0) return;
 
             for (const rawMsg of messages) {
-              const parsed = this.parseRawMessage(rawMsg);
+              const parsed = this.parseRawMessage(rawMsg, this.memberLookup);
               if (parsed) {
                 this.messageListeners.forEach((listener) => listener(parsed));
               }
@@ -98,8 +106,20 @@ class NexconnClientService {
     if (!token) return false;
 
     // Avoid reconnecting if already connected with the same session
-    if (this.connectionState === 'connected' && this.activeToken === token && this.activeGroupId === groupId) {
+    if (
+      this.connectionState === 'connected' &&
+      this.activeToken === token &&
+      this.currentUserId === userId &&
+      this.activeGroupId === groupId
+    ) {
       return true;
+    }
+
+    // Always tear down any existing connection before initiating a new one to prevent identity cross-talk
+    try {
+      await NCEngine.disconnect();
+    } catch {
+      // Disconnect cleanup error is non-fatal
     }
 
     this.currentUserId = userId;
@@ -135,8 +155,6 @@ class NexconnClientService {
    * Disconnects the user and cleans up the active session.
    */
   public async disconnect(): Promise<void> {
-    if (this.connectionState === 'disconnected') return;
-
     try {
       await NCEngine.disconnect();
     } catch (err) {
@@ -145,6 +163,7 @@ class NexconnClientService {
       this.currentUserId = '';
       this.activeGroupId = '';
       this.activeToken = '';
+      this.memberLookup = {};
       this.setConnectionState('disconnected');
     }
   }
@@ -177,12 +196,16 @@ class NexconnClientService {
       minute: '2-digit',
     });
 
+    const resolvedSenderName = senderProfile?.name || this.memberLookup[this.currentUserId]?.name || 'You';
+    const resolvedSenderFlat = senderProfile?.flatNumber || this.memberLookup[this.currentUserId]?.flatNumber;
+    const resolvedSenderRole = (senderProfile?.role as any) || (this.memberLookup[this.currentUserId]?.role as any) || 'resident';
+
     return {
       id: sentMessage.messageId || `msg_${Date.now()}`,
       senderId: this.currentUserId,
-      senderName: senderProfile?.name || 'You',
-      senderFlat: senderProfile?.flatNumber,
-      senderRole: (senderProfile?.role as any) || 'resident',
+      senderName: resolvedSenderName,
+      senderFlat: resolvedSenderFlat,
+      senderRole: resolvedSenderRole,
       timestamp: timeString,
       sentTime: sentMessage.sentTime || Date.now(),
       text: text.trim(),
@@ -276,7 +299,8 @@ class NexconnClientService {
 
     if (!contentText && !isBot) return null;
 
-    const member = memberLookup ? memberLookup[senderId] : undefined;
+    const lookup = memberLookup || this.memberLookup;
+    const member = lookup ? lookup[senderId] : undefined;
 
     const sentTime = raw.sentTime || Date.now();
     const timeString = new Date(sentTime).toLocaleTimeString([], {
@@ -284,14 +308,14 @@ class NexconnClientService {
       minute: '2-digit',
     });
 
+    const resolvedName = isBot
+      ? 'Society Cart Assistant'
+      : member?.name || (senderId ? `Resident (${senderId.slice(-4)})` : 'Resident');
+
     return {
       id: raw.messageId || `msg_${sentTime}_${Math.random()}`,
       senderId,
-      senderName: isBot
-        ? 'Society Cart Assistant'
-        : isSelf
-        ? 'You'
-        : member?.name || `Resident (${senderId.slice(-4)})`,
+      senderName: resolvedName,
       senderFlat: member?.flatNumber,
       senderRole: isBot ? 'bot' : (member?.role as any) || 'resident',
       timestamp: timeString,

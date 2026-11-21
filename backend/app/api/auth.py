@@ -62,8 +62,18 @@ async def login(request: LoginRequest, response: Response) -> TokenResponse:
 @router.post("/logout")
 async def logout(response: Response) -> dict:
     """Terminate the current session and clear authentication cookies."""
-    response.delete_cookie(key="access_token", path="/")
-    response.delete_cookie(key="refresh_token", path="/")
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+    )
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+    )
     return {"message": "Logged out successfully", "status": "ok"}
 
 
