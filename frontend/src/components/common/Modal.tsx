@@ -11,7 +11,7 @@ export interface ModalProps {
 }
 
 /**
- * Accessible Modal dialog with backdrop and escape key handling.
+ * Accessible Modal dialog with backdrop and escape key handling in warm cream palette.
  */
 export const Modal: React.FC<ModalProps> = ({
   isOpen,
@@ -44,28 +44,28 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-[#252824]/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
       {/* Modal Box */}
       <div
-        className={`relative w-full ${maxWidthStyles[maxWidth]} rounded-2xl bg-white p-6 shadow-xl border border-slate-100 transition-all z-10`}
+        className={`relative w-full ${maxWidthStyles[maxWidth]} rounded-3xl bg-white p-6 sm:p-8 shadow-lifted border border-[#EBE8DF] transition-all z-10`}
       >
-        <div className="flex items-start justify-between pb-3">
+        <div className="flex items-start justify-between pb-4 border-b border-[#EBE8DF]/70">
           <div>
-            {title && <h3 className="text-lg font-bold text-[#18231E]">{title}</h3>}
-            {description && <p className="mt-1 text-xs text-[#718078]">{description}</p>}
+            {title && <h3 className="text-xl font-bold text-[#252824] tracking-tight">{title}</h3>}
+            {description && <p className="mt-1 text-xs sm:text-sm text-[#827F76]">{description}</p>}
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            className="rounded-xl p-1.5 text-[#827F76] hover:bg-[#F3F0E8] hover:text-[#252824] transition-colors"
             aria-label="Close dialog"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="mt-2">{children}</div>
+        <div className="mt-4">{children}</div>
       </div>
     </div>
   );

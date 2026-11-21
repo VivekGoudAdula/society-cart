@@ -27,6 +27,7 @@ import { api } from '../services/api';
 
 /**
  * Screen 3: Resident Dashboard — Primary home for apartment residents to track orders, deadlines, and savings.
+ * Redesigned with warm Pinterest-inspired lifestyle aesthetics.
  */
 export const ResidentDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -50,11 +51,11 @@ export const ResidentDashboard: React.FC = () => {
   }, [society?.id, activeRound?.id]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top Page Header */}
       <PageHeader
-        title={`Welcome back, ${currentUser.name.split(' ')[0]}`}
-        description={`${society.name} • Flat ${currentUser.flatNumber}`}
+        title={`Welcome, ${currentUser.name.split(' ')[0]}`}
+        description={`${society?.name || 'Society Cart'} • Flat ${currentUser.flatNumber}`}
         badge={
           <Badge variant="primary" size="md">
             Resident Mode
@@ -62,10 +63,11 @@ export const ResidentDashboard: React.FC = () => {
         }
         actions={
           <Button
-            size="sm"
+            size="md"
             variant="primary"
             onClick={() => navigate('/chat')}
             leftIcon={<MessageSquare className="h-4 w-4" />}
+            className="shadow-sm shadow-[#174D3A]/20"
           >
             Open Society Chat
           </Button>
@@ -73,59 +75,59 @@ export const ResidentDashboard: React.FC = () => {
       />
 
       {/* Hero Active Order Round Card */}
-      <Card
-        className={`p-6 shadow-sm ${
+      <div
+        className={`rounded-3xl p-6 sm:p-8 transition-all border ${
           activeRound.status === 'open'
-            ? 'border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/30'
-            : 'border-slate-200 bg-white'
+            ? 'bg-gradient-to-br from-white via-white to-[#EBF2EE]/40 border-[#DFDAD0] shadow-card'
+            : 'bg-white border-[#EBE8DF] shadow-soft'
         }`}
       >
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
+          <div className="space-y-3.5 max-w-2xl">
+            <div className="flex items-center gap-2.5">
               <Badge
-                variant={activeRound.status === 'open' ? 'success' : 'neutral'}
+                variant={activeRound.status === 'open' ? 'primary' : 'neutral'}
                 pulseDot={activeRound.status === 'open'}
               >
                 {activeRound.status === 'open'
                   ? `Round #${activeRound.roundNumber} OPEN`
                   : 'ORDERING CLOSED'}
               </Badge>
-              <span className="text-xs text-[#718078] font-medium">• Collective Order Drive</span>
+              <span className="text-xs text-[#827F76] font-medium">• Collective Order Drive</span>
             </div>
 
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-[#18231E]">
+              <h2 className="text-xl sm:text-2xl font-bold text-[#252824] tracking-tight">
                 {activeRound.status === 'open' ? activeRound.title : 'No Active Grocery Round'}
               </h2>
-              <p className="mt-1 text-xs sm:text-sm text-[#718078]">
+              <p className="mt-1 text-xs sm:text-sm text-[#827F76] leading-relaxed">
                 {activeRound.status === 'open'
-                  ? 'Post your grocery requirements in the group chat before the deadline. Our volunteer will purchase in bulk.'
-                  : 'Grocery ordering is currently closed for this society. Society volunteers will announce the next procurement round.'}
+                  ? 'Drop your grocery needs in society group chat before the deadline. Our volunteer purchases wholesale in bulk.'
+                  : 'Grocery ordering is currently closed. Volunteers will schedule the next collective round soon.'}
               </p>
             </div>
 
             {/* Timing & Volunteer Meta Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-              <div className="flex items-center gap-2 text-xs text-[#18231E]">
-                <Clock className="h-4 w-4 text-amber-600 shrink-0" />
+              <div className="flex items-center gap-2 text-xs text-[#252824]">
+                <Clock className="h-4 w-4 text-[#C87D25] shrink-0" />
                 <span>
-                  Status:{' '}
-                  <strong className={activeRound.status === 'open' ? 'text-amber-800' : 'text-slate-600'}>
+                  Deadline:{' '}
+                  <strong className={activeRound.status === 'open' ? 'text-[#C87D25]' : 'text-[#827F76]'}>
                     {activeRound.deadlineText}
                   </strong>
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-[#18231E]">
-                <Calendar className="h-4 w-4 text-[#23865B] shrink-0" />
+              <div className="flex items-center gap-2 text-xs text-[#252824]">
+                <Calendar className="h-4 w-4 text-[#174D3A] shrink-0" />
                 <span>
                   Delivery: <strong>{activeRound.shopVisitDate}</strong>
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-[#18231E]">
-                <User className="h-4 w-4 text-slate-500 shrink-0" />
+              <div className="flex items-center gap-2 text-xs text-[#252824]">
+                <User className="h-4 w-4 text-[#827F76] shrink-0" />
                 <span>
                   Volunteer: <strong>{activeRound.volunteerName}</strong>
                 </span>
@@ -134,15 +136,16 @@ export const ResidentDashboard: React.FC = () => {
           </div>
 
           {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
             {activeRound.status === 'open' ? (
               <Button
                 variant="primary"
                 size="md"
                 onClick={() => navigate('/chat')}
                 leftIcon={<MessageSquare className="h-4 w-4" />}
+                className="shadow-sm shadow-[#174D3A]/20"
               >
-                Add Grocery Items in Chat
+                Add Groceries in Chat
               </Button>
             ) : (
               <Button
@@ -164,17 +167,17 @@ export const ResidentDashboard: React.FC = () => {
             </Button>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Phase 5: Active AI Parsed Orders Card (if any pending confirmation or clarification) */}
       {orders.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#18231E] flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-base font-bold text-[#252824] flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#174D3A]" />
               <span>AI-Interpreted Orders ({orders.length})</span>
             </h3>
-            <span className="text-xs text-[#718078]">Click to review, clarify, or confirm</span>
+            <span className="text-xs text-[#827F76]">Click to review, clarify, or confirm</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -183,37 +186,37 @@ export const ResidentDashboard: React.FC = () => {
                 key={ord.id}
                 hoverable
                 onClick={() => setSelectedOrder(ord)}
-                className={`p-4 transition-all ${
+                className={`p-5 transition-all ${
                   ord.status === 'needs_clarification'
-                    ? 'border-amber-300 bg-amber-50/30'
+                    ? 'border-amber-300 bg-amber-50/20'
                     : ord.status === 'pending_review' || ord.status === 'awaiting_confirmation'
-                    ? 'border-emerald-300 bg-emerald-50/20'
-                    : 'border-gray-200'
+                    ? 'border-[#A7B8A0] bg-[#EBF2EE]/30'
+                    : 'border-[#EBE8DF]'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-900 truncate">
+                      <span className="text-xs font-bold text-[#252824]">
                         Round #{ord.round_number}
                       </span>
                       <Badge
                         size="sm"
                         variant={
                           ord.status === 'confirmed'
-                            ? 'success'
+                            ? 'primary'
                             : ord.status === 'needs_clarification'
                             ? 'warning'
-                            : 'primary'
+                            : 'sage'
                         }
                       >
                         {ord.status.replace(/_/g, ' ')}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-600 italic mt-1 truncate max-w-sm">
+                    <p className="text-xs text-[#827F76] italic mt-1.5 truncate max-w-sm">
                       "{ord.raw_text}"
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-1">
+                    <p className="text-[11px] text-[#827F76] mt-1">
                       {ord.items.length} items extracted • {ord.detected_language.toUpperCase()}
                     </p>
                   </div>
@@ -230,10 +233,10 @@ export const ResidentDashboard: React.FC = () => {
 
       {/* Phase 7: My Grocery Bills */}
       {myBills.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#18231E]">My Grocery Bills & Invoices</h3>
-            <span className="text-xs text-[#718078]">{myBills.length} Invoices</span>
+            <h3 className="text-base font-bold text-[#252824]">My Grocery Bills & Invoices</h3>
+            <span className="text-xs text-[#827F76]">{myBills.length} Invoices</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -242,23 +245,23 @@ export const ResidentDashboard: React.FC = () => {
                 key={b.id}
                 hoverable
                 onClick={() => navigate('/order-summary')}
-                className="p-4 border-emerald-100 bg-white space-y-3 cursor-pointer group"
+                className="p-5 border-[#EBE8DF] bg-white space-y-3 cursor-pointer group hover:border-[#174D3A]/30"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#18231E]">Round #{b.round_number}</span>
-                  <Badge variant={b.status === 'published' ? 'success' : 'primary'} size="sm">
+                  <span className="text-xs font-bold text-[#252824]">Round #{b.round_number}</span>
+                  <Badge variant={b.status === 'published' ? 'primary' : 'neutral'} size="sm">
                     {b.status.toUpperCase()}
                   </Badge>
                 </div>
 
-                <div className="flex items-baseline justify-between pt-1 border-t border-slate-100">
-                  <span className="text-xs text-[#718078]">{b.items.length} items</span>
-                  <span className="text-base font-black text-[#196B48]">
+                <div className="flex items-baseline justify-between pt-2 border-t border-[#EBE8DF]">
+                  <span className="text-xs text-[#827F76]">{b.items.length} items</span>
+                  <span className="text-lg font-black text-[#174D3A]">
                     ₹{b.total_amount.toFixed(2)}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-400 group-hover:text-[#23865B] transition-colors">
+                <div className="flex items-center justify-between text-[11px] text-[#827F76] group-hover:text-[#174D3A] transition-colors">
                   <span>View Itemized Receipt</span>
                   <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -269,7 +272,7 @@ export const ResidentDashboard: React.FC = () => {
       )}
 
       {/* Quick Statistics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
           label="My Current Order"
           value="₹925"
@@ -281,14 +284,14 @@ export const ResidentDashboard: React.FC = () => {
           label="Cumulative Savings"
           value={`₹${residentBill.totalSavings + 280}`}
           subtext="Compared to retail apps"
-          icon={<TrendingDown className="h-5 w-5 text-emerald-600" />}
+          icon={<TrendingDown className="h-5 w-5 text-[#174D3A]" />}
           trend={{ value: '21% below retail', isPositive: true }}
         />
 
         <StatCard
           label="Completed Rounds"
           value="3 Orders"
-          subtext="All delivered to C-402"
+          subtext={`Delivered to Flat ${currentUser.flatNumber}`}
           icon={<CheckCircle2 className="h-5 w-5" />}
         />
 
@@ -301,26 +304,26 @@ export const ResidentDashboard: React.FC = () => {
       </div>
 
       {/* Grid: Recent Activity & Quick Action Shortcuts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Recent Activity Feed (2 Cols) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#18231E]">Society Activity Stream</h3>
-            <span className="text-xs text-[#718078]">Live round updates</span>
+            <h3 className="text-base font-bold text-[#252824]">Society Activity Stream</h3>
+            <span className="text-xs text-[#827F76]">Live round updates</span>
           </div>
 
-          <Card className="divide-y divide-[#E6ECE8] p-0">
+          <Card className="divide-y divide-[#EBE8DF] p-0 overflow-hidden">
             {notifications.map((item) => (
-              <div key={item.id} className="flex items-start gap-3 p-4 text-left hover:bg-slate-50/50 transition-colors">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EAF5EE] text-[#196B48] mt-0.5">
+              <div key={item.id} className="flex items-start gap-3 p-4 sm:p-5 text-left hover:bg-[#FAF9F6] transition-colors">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EBF2EE] text-[#174D3A] mt-0.5">
                   <BellRing className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-[#18231E]">{item.title}</h4>
-                    <span className="text-[10px] text-slate-400">{item.timestamp}</span>
+                    <h4 className="text-xs font-bold text-[#252824]">{item.title}</h4>
+                    <span className="text-[10px] text-[#827F76]">{item.timestamp}</span>
                   </div>
-                  <p className="mt-0.5 text-xs text-[#718078] leading-relaxed">{item.description}</p>
+                  <p className="mt-1 text-xs text-[#827F76] leading-relaxed">{item.description}</p>
                 </div>
               </div>
             ))}
@@ -329,55 +332,55 @@ export const ResidentDashboard: React.FC = () => {
 
         {/* Quick Actions & Tips (1 Col) */}
         <div className="space-y-4">
-          <h3 className="text-sm font-bold text-[#18231E]">Quick Actions</h3>
+          <h3 className="text-base font-bold text-[#252824]">Quick Actions</h3>
 
           <div className="space-y-3">
             <Card
               hoverable
               onClick={() => navigate('/chat')}
-              className="p-4 flex items-center justify-between group"
+              className="p-4 sm:p-5 flex items-center justify-between group"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EAF5EE] text-[#196B48]">
-                  <MessageSquare className="h-4 w-4" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EBF2EE] text-[#174D3A]">
+                  <MessageSquare className="h-5 w-5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-[#18231E] group-hover:text-[#23865B] transition-colors">
+                  <h4 className="text-xs sm:text-sm font-bold text-[#252824] group-hover:text-[#174D3A] transition-colors">
                     Society Group Chat
                   </h4>
-                  <p className="text-[11px] text-[#718078]">Type what you need in plain text</p>
+                  <p className="text-[11px] text-[#827F76]">Type what you need in plain text</p>
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="h-4 w-4 text-[#827F76] group-hover:translate-x-1 transition-transform" />
             </Card>
 
             <Card
               hoverable
               onClick={() => navigate('/order-summary')}
-              className="p-4 flex items-center justify-between group"
+              className="p-4 sm:p-5 flex items-center justify-between group"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-                  <Receipt className="h-4 w-4" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3F0E8] text-[#C87D25]">
+                  <Receipt className="h-5 w-5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-[#18231E] group-hover:text-[#23865B] transition-colors">
+                  <h4 className="text-xs sm:text-sm font-bold text-[#252824] group-hover:text-[#174D3A] transition-colors">
                     Check My Bill
                   </h4>
-                  <p className="text-[11px] text-[#718078]">Itemized receipt & savings proof</p>
+                  <p className="text-[11px] text-[#827F76]">Itemized receipt & savings proof</p>
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="h-4 w-4 text-[#827F76] group-hover:translate-x-1 transition-transform" />
             </Card>
 
             {/* Smart Tip Card */}
-            <div className="rounded-2xl border border-emerald-100 bg-[#EAF5EE]/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-[#196B48] mb-1">
+            <div className="rounded-2xl border border-[#DFDAD0] bg-[#FAF9F6] p-5 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#174D3A]">
                 <Sparkles className="h-4 w-4" />
                 <span>Multilingual AI Tip</span>
               </div>
-              <p className="text-[11px] text-emerald-900 leading-relaxed">
-                You can write your grocery requests in English, Telugu, or Hindi (e.g., <em>"2 kg rice, 1 packet sugar"</em> or <em>"Naaku 2 packets atta kavali"</em>). The assistant extracts items automatically!
+              <p className="text-xs text-[#827F76] leading-relaxed">
+                You can write grocery requests in English, Telugu, or Hindi (e.g., <em>"2 kg rice, 1 packet sugar"</em> or <em>"Naaku 2 packets atta kavali"</em>). The AI assistant extracts items and brands automatically!
               </p>
             </div>
           </div>

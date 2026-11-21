@@ -149,8 +149,8 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
       {spending && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#18231E]">Society Procurement & Spending Summary</h3>
-            <span className="text-xs text-[#718078]">Audit Reconciliation</span>
+            <h3 className="text-sm font-serif font-bold text-[#252824]">Society Procurement & Spending Summary</h3>
+            <span className="text-xs text-[#827F76]">Audit Reconciliation</span>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -158,42 +158,42 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
               label="Total Bulk Spend"
               value={`₹${spending.total_actual_purchase_cost.toFixed(2)}`}
               subtext={`${spending.total_purchased_items_count} items bought`}
-              icon={<Receipt className="h-5 w-5 text-[#23865B]" />}
+              icon={<Receipt className="h-5 w-5 text-[#174D3A]" />}
             />
             <StatCard
               label="Allocated to Flats"
               value={`₹${spending.total_allocated_bill_costs.toFixed(2)}`}
               subtext={`${spending.total_flats_billed} flats billed`}
-              icon={<Building2 className="h-5 w-5 text-emerald-600" />}
+              icon={<Building2 className="h-5 w-5 text-[#174D3A]" />}
             />
             <StatCard
               label="Shared Expenses"
               value={`₹${spending.total_shared_costs.toFixed(2)}`}
               subtext="Delivery & handling"
-              icon={<TrendingDown className="h-5 w-5 text-slate-600" />}
+              icon={<TrendingDown className="h-5 w-5 text-[#827F76]" />}
             />
             <StatCard
               label="Unallocated Inventory"
               value={`₹${spending.total_unallocated_cost.toFixed(2)}`}
               subtext="Surplus quantity value"
-              icon={<ShieldCheck className="h-5 w-5 text-[#23865B]" />}
+              icon={<ShieldCheck className="h-5 w-5 text-[#174D3A]" />}
             />
           </div>
 
-          <Card className="p-4 bg-slate-50 border border-slate-200 text-xs">
-            <div className="font-bold text-[#18231E] mb-1">Reconciliation Equation:</div>
-            <code className="text-[#196B48] font-mono text-[11px] block">{spending.reconciliation_equation}</code>
+          <Card className="p-4 bg-[#F3F0E8]/40 border border-[#EBE8DF] text-xs">
+            <div className="font-bold text-[#252824] mb-1">Reconciliation Equation:</div>
+            <code className="text-[#174D3A] font-mono text-[11px] block">{spending.reconciliation_equation}</code>
           </Card>
         </div>
       )}
 
       {/* 2. Verified Retail Benchmark Savings */}
       {savings && (
-        <div className="space-y-4 pt-4 border-t border-[#E6ECE8]">
+        <div className="space-y-4 pt-4 border-t border-[#EBE8DF]">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-[#18231E]">Verified Retail Savings Analysis</h3>
-              <p className="text-xs text-[#718078]">
+              <h3 className="text-sm font-serif font-bold text-[#252824]">Verified Retail Savings Analysis</h3>
+              <p className="text-xs text-[#827F76]">
                 Formula: Savings = Individual Retail Benchmark Cost - Bulk Purchase Cost
               </p>
             </div>
@@ -208,35 +208,35 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
           </div>
 
           {/* Hero Savings Card */}
-          <Card className="p-6 border-emerald-200 bg-gradient-to-r from-emerald-50/40 via-white to-emerald-50/20">
+          <Card className="p-6 border-[#EBE8DF] bg-gradient-to-r from-[#F3F0E8]/70 via-white to-[#F3F0E8]/40 shadow-card">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                  <ShieldCheck className="h-4 w-4 text-[#23865B]" /> {savings.label}
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#174D3A] flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-[#174D3A]" /> {savings.label}
                 </span>
-                <h2 className="text-2xl font-black text-[#18231E]">
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#252824]">
                   ₹{savings.verified_savings_amount.toFixed(2)} ({savings.verified_savings_percentage}%)
                 </h2>
-                <p className="text-xs text-[#718078]">
+                <p className="text-xs text-[#827F76]">
                   Computed for {savings.items_with_verified_benchmarks} products with verified retail evidence.
                   {savings.is_partial_coverage && (
-                    <span className="text-amber-700 font-medium ml-1">
+                    <span className="text-amber-800 font-medium ml-1">
                       ({savings.items_excluded_count} items excluded due to missing evidence; not extrapolated).
                     </span>
                   )}
                 </p>
               </div>
 
-              <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-emerald-100 shadow-xs shrink-0">
-                <div className="text-center px-3 border-r border-slate-100">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Retail Benchmark</span>
-                  <span className="text-base font-bold text-slate-500 line-through">
+              <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-[#EBE8DF] shadow-xs shrink-0">
+                <div className="text-center px-3 border-r border-[#EBE8DF]">
+                  <span className="text-[10px] uppercase font-bold text-[#827F76] block">Retail Benchmark</span>
+                  <span className="text-base font-bold text-[#827F76] line-through">
                     ₹{savings.total_individual_benchmark_cost.toFixed(2)}
                   </span>
                 </div>
                 <div className="text-center px-3">
-                  <span className="text-[10px] uppercase font-bold text-emerald-800 block">Bulk Cost</span>
-                  <span className="text-lg font-black text-[#18231E]">
+                  <span className="text-[10px] uppercase font-bold text-[#174D3A] block">Bulk Cost</span>
+                  <span className="text-lg font-bold text-[#252824]">
                     ₹{savings.total_bulk_cost_comparable_items.toFixed(2)}
                   </span>
                 </div>
@@ -245,15 +245,15 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
           </Card>
 
           {/* Itemized Comparison Table */}
-          <Card className="p-0 overflow-hidden">
-            <div className="p-4 border-b border-[#E6ECE8] flex items-center justify-between">
-              <h4 className="text-sm font-bold text-[#18231E]">Item-by-Item Price Comparison</h4>
-              <span className="text-xs text-[#718078]">{savings.items.length} Evaluated Items</span>
+          <Card className="p-0 overflow-hidden border-[#EBE8DF]">
+            <div className="p-4 border-b border-[#EBE8DF] flex items-center justify-between">
+              <h4 className="text-sm font-serif font-bold text-[#252824]">Item-by-Item Price Comparison</h4>
+              <span className="text-xs text-[#827F76]">{savings.items.length} Evaluated Items</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
+                <thead className="bg-[#F3F0E8] border-b border-[#EBE8DF] text-[#827F76] font-bold uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Product Name</th>
                     <th className="py-3 px-4 text-center">Procured Qty</th>
@@ -263,31 +263,31 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
                     <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#E6ECE8]">
+                <tbody className="divide-y divide-[#EBE8DF]">
                   {savings.items.map((it, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                    <tr key={idx} className="hover:bg-[#FAF9F6] transition-colors">
                       <td className="py-3 px-4">
-                        <span className="font-bold text-[#18231E]">{it.item_name}</span>
+                        <span className="font-bold text-[#252824]">{it.item_name}</span>
                         {(it.brand || it.variant) && (
-                          <span className="text-[11px] text-[#718078] block">
+                          <span className="text-[11px] text-[#827F76] block">
                             {[it.brand, it.variant].filter(Boolean).join(' • ')}
                           </span>
                         )}
                         {it.benchmark_store && (
-                          <span className="text-[10px] text-slate-400 block">
+                          <span className="text-[10px] text-[#827F76] block">
                             Store: {it.benchmark_store}
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-center font-medium text-[#718078]">
+                      <td className="py-3 px-4 text-center font-medium text-[#827F76]">
                         {it.quantity} {it.unit}
                       </td>
-                      <td className="py-3 px-4 text-right font-bold text-[#18231E]">
+                      <td className="py-3 px-4 text-right font-bold text-[#252824]">
                         ₹{it.bulk_unit_price.toFixed(2)}/{it.unit}
                       </td>
                       <td className="py-3 px-4 text-right">
                         {it.has_benchmark && it.benchmark_unit_price ? (
-                          <span className="text-slate-500 font-semibold">
+                          <span className="text-[#827F76] font-semibold">
                             ₹{it.benchmark_unit_price.toFixed(2)}/{it.unit}
                           </span>
                         ) : (
@@ -296,7 +296,7 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
                       </td>
                       <td className="py-3 px-4 text-right">
                         {it.has_benchmark && it.savings_amount !== null && it.savings_amount !== undefined ? (
-                          <span className="font-black text-[#23865B]">
+                          <span className="font-bold text-[#174D3A]">
                             ₹{it.savings_amount.toFixed(2)} ({it.savings_percentage}%)
                           </span>
                         ) : (
@@ -318,21 +318,21 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
       )}
 
       {/* 3. Recorded Retail Benchmarks Log */}
-      <Card className="p-0 overflow-hidden">
-        <div className="p-4 border-b border-[#E6ECE8] flex items-center justify-between">
-          <h4 className="text-sm font-bold text-[#18231E]">Verified Benchmark Evidence Library</h4>
-          <span className="text-xs text-[#718078]">{benchmarks.length} Evidence Records</span>
+      <Card className="p-0 overflow-hidden border-[#EBE8DF]">
+        <div className="p-4 border-b border-[#EBE8DF] flex items-center justify-between">
+          <h4 className="text-sm font-serif font-bold text-[#252824]">Verified Benchmark Evidence Library</h4>
+          <span className="text-xs text-[#827F76]">{benchmarks.length} Evidence Records</span>
         </div>
 
         {benchmarks.length === 0 ? (
-          <div className="py-12 text-center text-slate-400">
-            <Receipt className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+          <div className="py-12 text-center text-[#827F76]">
+            <Receipt className="h-10 w-10 mx-auto text-[#DFDAD0] mb-2" />
             <p className="text-xs">No benchmark evidence recorded yet. Add receipts to verify savings.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
+              <thead className="bg-[#F3F0E8] border-b border-[#EBE8DF] text-[#827F76] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Product & Brand</th>
                   <th className="py-3 px-4">Retailer</th>
@@ -343,30 +343,30 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
                   <th className="py-3 px-4 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E6ECE8]">
+              <tbody className="divide-y divide-[#EBE8DF]">
                 {benchmarks.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50/60 transition-colors">
+                  <tr key={b.id} className="hover:bg-[#FAF9F6] transition-colors">
                     <td className="py-3 px-4">
-                      <div className="font-bold text-[#18231E]">{b.product_name}</div>
+                      <div className="font-bold text-[#252824]">{b.product_name}</div>
                       {(b.brand || b.variant) && (
-                        <div className="text-[11px] text-[#718078]">
+                        <div className="text-[11px] text-[#827F76]">
                           {[b.brand, b.variant].filter(Boolean).join(' • ')}
                         </div>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-[#718078]">
+                    <td className="py-3 px-4 text-[#827F76]">
                       {b.store_name} ({b.location})
                     </td>
-                    <td className="py-3 px-4 text-center text-[#718078]">
+                    <td className="py-3 px-4 text-center text-[#827F76]">
                       {b.package_size} {b.package_unit}
                     </td>
-                    <td className="py-3 px-4 text-right font-bold text-[#18231E]">
+                    <td className="py-3 px-4 text-right font-bold text-[#252824]">
                       ₹{b.benchmark_price.toFixed(2)}
                     </td>
-                    <td className="py-3 px-4 text-right text-[#23865B] font-semibold">
+                    <td className="py-3 px-4 text-right text-[#174D3A] font-semibold">
                       ₹{b.benchmark_unit_price.toFixed(2)}/{b.package_unit}
                     </td>
-                    <td className="py-3 px-4 text-center text-[#718078]">
+                    <td className="py-3 px-4 text-center text-[#827F76]">
                       {new Date(b.evidence_date).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4 text-center">
@@ -382,75 +382,75 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
 
       {/* Add Benchmark Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#252824]/50 backdrop-blur-xs p-4">
+          <div className="bg-[#FAF9F6] rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-lifted border border-[#EBE8DF]">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#18231E]">Record Retail Benchmark Evidence</h3>
+              <h3 className="text-base font-serif font-bold text-[#252824]">Record Retail Benchmark Evidence</h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="text-[#827F76] hover:text-[#252824] text-sm font-bold p-1 rounded-lg"
               >
                 ✕
               </button>
             </div>
-            <p className="text-xs text-[#718078]">
+            <p className="text-xs text-[#827F76]">
               Attach verifiable retail purchase price proof from receipts, store quotations, or dated listings.
             </p>
 
             <form onSubmit={handleCreateBenchmark} className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-[#18231E] mb-1">Product Name *</label>
+                <label className="block text-xs font-bold text-[#252824] mb-1">Product Name *</label>
                 <input
                   type="text"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
                   placeholder="e.g. Sona Masoori Rice"
-                  className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                  className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Brand (Optional)</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Brand (Optional)</label>
                   <input
                     type="text"
                     value={brand}
                     onChange={(e) => setBrand(e.target.value)}
                     placeholder="e.g. India Gate"
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Variant (Optional)</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Variant (Optional)</label>
                   <input
                     type="text"
                     value={variant}
                     onChange={(e) => setVariant(e.target.value)}
                     placeholder="e.g. Premium"
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Pack Size *</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Pack Size *</label>
                   <input
                     type="number"
                     step="any"
                     value={pkgSize}
                     onChange={(e) => setPkgSize(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Unit *</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Unit *</label>
                   <select
                     value={pkgUnit}
                     onChange={(e) => setPkgUnit(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   >
                     <option value="kg">kg</option>
                     <option value="L">L</option>
@@ -459,14 +459,14 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Price (₹) *</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Price (₹) *</label>
                   <input
                     type="number"
                     step="0.01"
                     value={benchPrice}
                     onChange={(e) => setBenchPrice(e.target.value)}
                     placeholder="65.00"
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                     required
                   />
                 </div>
@@ -474,35 +474,35 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Retailer Store *</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Retailer Store *</label>
                   <input
                     type="text"
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
                     placeholder="e.g. Reliance Fresh"
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Receipt / Proof Ref</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Receipt / Proof Ref</label>
                   <input
                     type="text"
                     value={evidenceRef}
                     onChange={(e) => setEvidenceRef(e.target.value)}
                     placeholder="e.g. REC-10294"
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Evidence Type</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Evidence Type</label>
                   <select
                     value={sourceType}
                     onChange={(e) => setSourceType(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   >
                     <option value="receipt">Store Receipt</option>
                     <option value="quotation">Vendor Quotation</option>
@@ -510,13 +510,13 @@ export const SpendingAndSavingsSection: React.FC<SpendingAndSavingsSectionProps>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#18231E] mb-1">Locality / Market</label>
+                  <label className="block text-xs font-bold text-[#252824] mb-1">Locality / Market</label>
                   <input
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     placeholder="e.g. Kondapur, Hyderabad"
-                    className="w-full text-xs rounded-lg border border-slate-200 p-2.5 focus:border-emerald-600 focus:outline-none"
+                    className="w-full text-xs rounded-xl border border-[#DFDAD0] bg-white p-2.5 focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 focus:outline-none"
                   />
                 </div>
               </div>

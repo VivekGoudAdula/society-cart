@@ -16,7 +16,6 @@ import {
   RefreshCw,
   PlusCircle,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PageHeader } from '../components/common/PageHeader';
@@ -32,7 +31,8 @@ import { ApiMembership, ApiOrderRound } from '../types';
 
 /**
  * Screen 4: Volunteer Operations Dashboard — Logistics control center for closing rounds,
- * tallying bulk items, and managing apartment community resident roles.
+ * compiling bulk items, and managing apartment community resident roles.
+ * Redesigned in warm Pinterest-inspired lifestyle palette.
  */
 export const VolunteerDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -75,7 +75,7 @@ export const VolunteerDashboard: React.FC = () => {
   const [isLoadingRounds, setIsLoadingRounds] = useState(false);
 
   const purchasedCount = groceryItems.filter((i) => i.isPurchased).length;
-  const progressPercent = Math.round((purchasedCount / groceryItems.length) * 100);
+  const progressPercent = Math.round((purchasedCount / (groceryItems.length || 1)) * 100);
 
   const isAdmin = activeSocietyPair?.membership.role === 'admin';
   const isVolunteerOrAdmin =
@@ -209,18 +209,18 @@ export const VolunteerDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top Header */}
       <PageHeader
-        title={`Operations Dashboard — ${currentUser.name.split(' ')[0]}`}
-        description={`${society.name} • Society Management & Operations`}
+        title={`Operations Hub — ${currentUser.name.split(' ')[0]}`}
+        description={`${society?.name || 'Society Cart'} • Society Management & Bulk Logistics`}
         badge={
           <Badge variant={isAdmin ? 'warning' : 'primary'} size="md">
             {isAdmin ? 'Admin View' : 'Volunteer View'}
           </Badge>
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Button
               size="sm"
               variant="outline"
@@ -234,6 +234,7 @@ export const VolunteerDashboard: React.FC = () => {
               variant="primary"
               onClick={() => navigate('/shopping-list')}
               leftIcon={<ShoppingCart className="h-4 w-4" />}
+              className="shadow-sm shadow-[#174D3A]/20"
             >
               Consolidated Shopping List
             </Button>
@@ -242,18 +243,18 @@ export const VolunteerDashboard: React.FC = () => {
       />
 
       {/* Operational Key Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
           label="Active Order Round"
           value={`Round #${activeRound.roundNumber}`}
           subtext={activeRound.status === 'open' ? 'Accepting resident lists' : 'Locked for purchasing'}
-          icon={<Layers className="h-5 w-5 text-[#23865B]" />}
+          icon={<Layers className="h-5 w-5 text-[#174D3A]" />}
         />
 
         <StatCard
           label="Registered Residents"
           value={members.length > 0 ? `${members.length} Members` : `${activeRound.participatingFlatsCount} Flats`}
-          subtext={`Society: ${society.name}`}
+          subtext={`Society: ${society?.name || 'Society'}`}
           icon={<Users className="h-5 w-5" />}
           trend={{ value: 'Active community roster', isPositive: true }}
         />
@@ -276,11 +277,11 @@ export const VolunteerDashboard: React.FC = () => {
 
       {/* Society Members Management Card (RBAC) */}
       {isAuthenticated && members.length > 0 && (
-        <Card className="p-6 border-slate-200">
+        <Card className="p-6 bg-white border-[#EBE8DF] shadow-soft">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-[#23865B]" />
-              <h3 className="text-sm font-bold text-[#18231E]">Society Residents & Roles</h3>
+              <Users className="h-4 w-4 text-[#174D3A]" />
+              <h3 className="text-sm font-bold text-[#252824]">Society Residents & Roles</h3>
               <Badge variant="neutral" size="sm">
                 {members.length} Registered
               </Badge>
@@ -288,7 +289,7 @@ export const VolunteerDashboard: React.FC = () => {
             <button
               onClick={loadMembers}
               disabled={isLoadingMembers}
-              className="inline-flex items-center gap-1 text-xs text-[#718078] hover:text-[#23865B] transition-colors"
+              className="inline-flex items-center gap-1 text-xs text-[#827F76] hover:text-[#174D3A] transition-colors"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoadingMembers ? 'animate-spin' : ''}`} />
               <span>Refresh Roster</span>
@@ -300,7 +301,7 @@ export const VolunteerDashboard: React.FC = () => {
               className={`mb-4 p-3 rounded-xl text-xs font-semibold ${
                 memberMessage.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
             >
               {memberMessage.text}
@@ -309,7 +310,7 @@ export const VolunteerDashboard: React.FC = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
+              <thead className="bg-[#FAF9F6] border-b border-[#EBE8DF] text-[#827F76] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="py-2.5 px-3">Flat</th>
                   <th className="py-2.5 px-3">Name</th>
@@ -318,14 +319,14 @@ export const VolunteerDashboard: React.FC = () => {
                   {isAdmin && <th className="py-2.5 px-3 text-right">Role Assignment</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E6ECE8]">
+              <tbody className="divide-y divide-[#EBE8DF]">
                 {members.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-3 font-bold text-[#18231E]">Flat {m.flat_number}</td>
-                    <td className="py-3 px-3 font-semibold text-[#18231E]">
+                  <tr key={m.id} className="hover:bg-[#FAF9F6] transition-colors">
+                    <td className="py-3 px-3 font-bold text-[#252824]">Flat {m.flat_number}</td>
+                    <td className="py-3 px-3 font-semibold text-[#252824]">
                       {m.user_name || 'Resident'}
                     </td>
-                    <td className="py-3 px-3 text-[#718078]">{m.user_email || '—'}</td>
+                    <td className="py-3 px-3 text-[#827F76]">{m.user_email || '—'}</td>
                     <td className="py-3 px-3">
                       <Badge
                         size="sm"
@@ -333,15 +334,15 @@ export const VolunteerDashboard: React.FC = () => {
                       >
                         {m.role === 'admin' ? (
                           <span className="flex items-center gap-1">
-                            <Shield className="h-3 w-3 text-amber-600" /> Admin
+                            <Shield className="h-3 w-3 text-amber-700" /> Admin
                           </span>
                         ) : m.role === 'volunteer' ? (
-                          <span className="flex items-center gap-1">
-                            <ShieldCheck className="h-3 w-3 text-[#23865B]" /> Volunteer
+                          <span className="flex items-center gap-1 font-semibold">
+                            <ShieldCheck className="h-3 w-3 text-[#174D3A]" /> Volunteer
                           </span>
                         ) : (
                           <span className="flex items-center gap-1">
-                            <User className="h-3 w-3 text-slate-500" /> Resident
+                            <User className="h-3 w-3 text-[#827F76]" /> Resident
                           </span>
                         )}
                       </Badge>
@@ -349,7 +350,7 @@ export const VolunteerDashboard: React.FC = () => {
                     {isAdmin && (
                       <td className="py-3 px-3 text-right">
                         {m.role === 'admin' ? (
-                          <span className="text-[11px] text-slate-400 font-medium">Society Creator</span>
+                          <span className="text-[11px] text-[#827F76] font-medium">Society Creator</span>
                         ) : (
                           <Button
                             size="sm"
@@ -378,49 +379,50 @@ export const VolunteerDashboard: React.FC = () => {
       )}
 
       {/* Active Round Management Operational Card */}
-      <Card className="p-6 border-slate-200">
+      <Card className="p-6 sm:p-8 bg-white border-[#EBE8DF] shadow-soft">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
+          <div className="space-y-3 max-w-2xl">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#827F76]">
                 Logistics Controller
               </span>
               <Badge
-                variant={activeRound.status === 'open' ? 'success' : 'neutral'}
+                variant={activeRound.status === 'open' ? 'primary' : 'neutral'}
                 pulseDot={activeRound.status === 'open'}
               >
                 STATUS: {activeRound.status.toUpperCase()}
               </Badge>
             </div>
 
-            <h2 className="text-lg font-bold text-[#18231E]">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#252824] tracking-tight">
               {activeRound.title}
             </h2>
 
-            <p className="text-xs text-[#718078] leading-relaxed">
-              When all residents have posted their requirements in the group chat, close the round to lock new requests and generate the final consolidated manifest for wholesale purchase.
+            <p className="text-xs sm:text-sm text-[#827F76] leading-relaxed">
+              When all residents have posted requirements in the group chat, close the round to lock new requests and compile the master shopping list for wholesale bulk purchase.
             </p>
 
-            <div className="flex flex-wrap items-center gap-4 pt-2 text-xs text-[#18231E]">
+            <div className="flex flex-wrap items-center gap-4 pt-2 text-xs text-[#252824]">
               <div className="flex items-center gap-1.5 font-medium">
-                <Clock className="h-4 w-4 text-amber-600" />
+                <Clock className="h-4 w-4 text-[#C87D25]" />
                 <span>Order Deadline: <strong>{activeRound.deadlineText}</strong></span>
               </div>
               <div className="flex items-center gap-1.5 font-medium">
-                <Calendar className="h-4 w-4 text-[#23865B]" />
+                <Calendar className="h-4 w-4 text-[#174D3A]" />
                 <span>Visit Date: <strong>{activeRound.shopVisitDate}</strong></span>
               </div>
             </div>
           </div>
 
           {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
             {isVolunteerOrAdmin && activeRound.status !== 'open' && (
               <Button
                 variant="primary"
                 size="md"
                 onClick={() => setShowCreateModal(true)}
                 leftIcon={<PlusCircle className="h-4 w-4" />}
+                className="shadow-sm shadow-[#174D3A]/20"
               >
                 Start New Grocery Round
               </Button>
@@ -440,7 +442,7 @@ export const VolunteerDashboard: React.FC = () => {
                 variant="outline"
                 size="md"
                 onClick={() => setShowCloseModal(true)}
-                leftIcon={<Lock className="h-4 w-4 text-amber-600" />}
+                leftIcon={<Lock className="h-4 w-4 text-[#C87D25]" />}
                 className="hover:border-amber-500 hover:text-amber-800"
               >
                 Close Order Round
@@ -455,21 +457,21 @@ export const VolunteerDashboard: React.FC = () => {
 
         {/* Action Error feedback if any */}
         {actionError && (
-          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-800 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+          <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
             <span>{actionError}</span>
           </div>
         )}
 
         {/* Packing & Purchasing Progress Bar */}
-        <div className="mt-6 pt-5 border-t border-[#E6ECE8]">
-          <div className="flex items-center justify-between text-xs mb-1.5 font-semibold text-[#18231E]">
+        <div className="mt-6 pt-5 border-t border-[#EBE8DF]">
+          <div className="flex items-center justify-between text-xs mb-2 font-semibold text-[#252824]">
             <span>Shopping Progress</span>
             <span>{purchasedCount} of {groceryItems.length} items purchased ({progressPercent}%)</span>
           </div>
-          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-2.5 w-full bg-[#F3F0E8] rounded-full overflow-hidden">
             <div
-              className="h-full bg-[#23865B] rounded-full transition-all duration-300"
+              className="h-full bg-[#174D3A] rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -480,28 +482,28 @@ export const VolunteerDashboard: React.FC = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-[#18231E]">Completed Grocery Drives</h3>
+            <h3 className="text-base font-bold text-[#252824]">Completed Grocery Drives</h3>
             <Badge variant="neutral" size="sm">
               {pastRoundsList.length > 0 ? `${pastRoundsList.length} Rounds` : 'Archive'}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#718078]">Past distribution records</span>
+            <span className="text-xs text-[#827F76]">Past distribution records</span>
             <button
               onClick={loadRoundsHistory}
               disabled={isLoadingRounds}
               title="Refresh Rounds History"
-              className="inline-flex items-center gap-1 text-xs text-[#718078] hover:text-[#23865B] transition-colors"
+              className="inline-flex items-center gap-1 text-xs text-[#827F76] hover:text-[#174D3A] transition-colors"
             >
               <RefreshCw className={`h-3 w-3 ${isLoadingRounds ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
 
-        <Card className="p-0 overflow-hidden">
+        <Card className="p-0 overflow-hidden bg-white border-[#EBE8DF] shadow-soft">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
+              <thead className="bg-[#FAF9F6] border-b border-[#EBE8DF] text-[#827F76] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Round</th>
                   <th className="py-3 px-4">Shopping Date</th>
@@ -511,24 +513,24 @@ export const VolunteerDashboard: React.FC = () => {
                   <th className="py-3 px-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E6ECE8]">
+              <tbody className="divide-y divide-[#EBE8DF]">
                 {pastRoundsList.length > 0 ? (
                   pastRoundsList.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-[#18231E]">
+                    <tr key={r.id} className="hover:bg-[#FAF9F6] transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-[#252824]">
                         Round #{r.round_number} — {r.title}
                       </td>
-                      <td className="py-3.5 px-4 text-[#718078]">{r.shopping_date}</td>
-                      <td className="py-3.5 px-4 text-[#718078]">
+                      <td className="py-3.5 px-4 text-[#827F76]">{r.shopping_date}</td>
+                      <td className="py-3.5 px-4 text-[#827F76]">
                         {new Date(r.deadline_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })},{' '}
                         {new Date(r.deadline_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
                       </td>
-                      <td className="py-3.5 px-4 font-medium text-[#18231E]">
+                      <td className="py-3.5 px-4 font-medium text-[#252824]">
                         {r.submissions_count} submissions
                       </td>
                       <td className="py-3.5 px-4">
                         <Badge
-                          variant={r.status === 'open' ? 'success' : r.status === 'draft' ? 'warning' : 'neutral'}
+                          variant={r.status === 'open' ? 'primary' : r.status === 'draft' ? 'warning' : 'neutral'}
                           size="sm"
                         >
                           {r.status.toUpperCase()}
@@ -537,7 +539,7 @@ export const VolunteerDashboard: React.FC = () => {
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => navigate(`/shopping-list?roundId=${r.id}`)}
-                          className="font-semibold text-[#23865B] hover:underline"
+                          className="font-semibold text-[#174D3A] hover:underline"
                         >
                           Shopping Manifest
                         </button>
@@ -546,24 +548,26 @@ export const VolunteerDashboard: React.FC = () => {
                   ))
                 ) : (
                   pastRounds.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-[#18231E]">
+                    <tr key={r.id} className="hover:bg-[#FAF9F6] transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-[#252824]">
                         Round #{r.roundNumber} — {r.title}
                       </td>
-                      <td className="py-3.5 px-4 text-[#718078]">{r.shopVisitDate}</td>
-                      <td className="py-3.5 px-4 text-[#718078]">{r.deadlineText}</td>
-                      <td className="py-3.5 px-4 font-medium">{r.participatingFlatsCount} Flats</td>
+                      <td className="py-3.5 px-4 text-[#827F76]">{r.shopVisitDate}</td>
+                      <td className="py-3.5 px-4 text-[#827F76]">{r.deadlineText}</td>
+                      <td className="py-3.5 px-4 font-medium text-[#252824]">
+                        {r.participatingFlatsCount} flats
+                      </td>
                       <td className="py-3.5 px-4">
-                        <Badge variant="success" size="sm">
-                          Delivered
+                        <Badge variant="neutral" size="sm">
+                          {r.status.toUpperCase()}
                         </Badge>
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <button
-                          onClick={() => navigate('/order-summary')}
-                          className="font-semibold text-[#23865B] hover:underline"
+                          onClick={() => navigate('/shopping-list')}
+                          className="font-semibold text-[#174D3A] hover:underline"
                         >
-                          View Bill & Savings
+                          View Items
                         </button>
                       </td>
                     </tr>
@@ -578,92 +582,68 @@ export const VolunteerDashboard: React.FC = () => {
       {/* Start New Round Modal */}
       <Modal
         isOpen={showCreateModal}
-        onClose={() => !isCreating && setShowCreateModal(false)}
-        title="Start New Grocery Ordering Round"
-        description="Creates an ordering round and broadcasts the opening announcement to all residents on the Nexconn group chat."
+        onClose={() => setShowCreateModal(false)}
+        title="Start New Grocery Round"
+        description="Schedule a collective purchasing round for your apartment community."
       >
-        <form onSubmit={handleCreateAndOpenRound} className="space-y-4 pt-2">
-          {actionError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-800 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-              <span>{actionError}</span>
-            </div>
-          )}
-
+        <form onSubmit={handleCreateAndOpenRound} className="space-y-4">
           <Input
             label="Round Title"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="e.g. Weekend Essentials Drive"
+            placeholder="e.g. Sunday Morning Wholesale Market"
             required
           />
 
           <Input
-            label="Description / Volunteer Note"
+            label="Description (Optional)"
             value={newDescription}
             onChange={(e) => setNewDescription(e.target.value)}
-            placeholder="e.g. Procuring from wholesale mandi on Saturday morning"
+            placeholder="e.g. Aggregating organic essentials and staples"
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
-              label="Order Submission Deadline"
+              label="Submission Deadline"
               type="datetime-local"
               value={newDeadline}
               onChange={(e) => setNewDeadline(e.target.value)}
               required
             />
-
             <Input
-              label="Expected Shopping Date"
+              label="Procurement / Shop Visit"
               value={newShoppingDate}
               onChange={(e) => setNewShoppingDate(e.target.value)}
-              placeholder="e.g. Saturday 10:00 AM"
+              placeholder="e.g. Sunday 9:00 AM"
               required
             />
           </div>
 
-          <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
-            <div className="font-bold flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Real-Time Group Chat Broadcast</span>
+          {actionError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
+              {actionError}
             </div>
-            <p className="text-[11px] text-emerald-800 leading-relaxed">
-              Upon starting, Society Cart Assistant will publish an official announcement with the deadline to the apartment Nexconn group channel.
-            </p>
-          </div>
+          )}
 
-          <div className="flex items-center justify-end gap-2.5 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="md"
-              disabled={isCreating}
-              onClick={() => setShowCreateModal(false)}
-            >
+          <div className="flex items-center justify-end gap-3 pt-3">
+            <Button variant="outline" size="sm" type="button" onClick={() => setShowCreateModal(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              isLoading={isCreating}
-              leftIcon={<PlusCircle className="h-4 w-4" />}
-            >
-              Start & Announce Round
+            <Button variant="primary" size="sm" type="submit" isLoading={isCreating}>
+              Create & Open Round
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Close Round Confirmation Modal */}
+      {/* Confirmation Dialog: Close Round */}
       <ConfirmationDialog
         isOpen={showCloseModal}
-        onClose={() => !isClosing && setShowCloseModal(false)}
+        onClose={() => setShowCloseModal(false)}
         onConfirm={handleConfirmClose}
-        title={`Close Round #${activeRound.roundNumber} for Submissions?`}
-        message="Closing the round will immediately lock resident grocery order submissions and broadcast a closing notice in the Nexconn group chat. You can then view the consolidated shopping list."
-        confirmLabel={isClosing ? 'Closing...' : 'Yes, Close Round'}
+        title="Close Active Grocery Round?"
+        message="Closing locks the round and stops accepting new grocery messages. The volunteer can then compile the consolidated master shopping list for wholesale purchase."
+        confirmLabel={isClosing ? 'Closing...' : 'Close Round & Lock'}
         cancelLabel="Keep Open"
       />
     </div>

@@ -38,10 +38,10 @@ export const Avatar: React.FC<AvatarProps> = ({
   };
 
   const ringStyles: Record<UserRole | 'bot', string> = {
-    volunteer: 'ring-2 ring-emerald-500',
-    resident: 'ring-1 ring-slate-200',
-    admin: 'ring-2 ring-amber-500',
-    bot: 'ring-2 ring-indigo-400',
+    volunteer: 'ring-2 ring-[#174D3A]',
+    resident: 'ring-1 ring-[#DFDAD0]',
+    admin: 'ring-2 ring-amber-600',
+    bot: 'ring-2 ring-emerald-600',
   };
 
   return (
@@ -56,7 +56,7 @@ export const Avatar: React.FC<AvatarProps> = ({
         />
       ) : (
         <div
-          className={`flex items-center justify-center rounded-full bg-[#EAF5EE] font-bold text-[#196B48] select-none ${
+          className={`flex items-center justify-center rounded-full bg-[#EBF2EE] font-bold text-[#174D3A] border border-[#174D3A]/20 select-none ${
             sizeStyles[size]
           } ${roleTag ? ringStyles[roleTag] : ''} ${className}`}
         >
@@ -66,7 +66,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       {roleTag === 'volunteer' && (
         <span
           title="Society Volunteer"
-          className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold text-white ring-1 ring-white"
+          className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#174D3A] text-[8px] font-bold text-white ring-1 ring-white"
         >
           V
         </span>

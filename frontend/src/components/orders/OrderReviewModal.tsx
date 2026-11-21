@@ -159,29 +159,29 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#252824]/60 backdrop-blur-xs animate-fade-in">
+      <div className="bg-[#FAF9F6] rounded-3xl shadow-lifted w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-[#EBE8DF]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-emerald-50/50 via-teal-50/30 to-white">
+        <div className="px-6 py-4 border-b border-[#EBE8DF] flex items-center justify-between bg-gradient-to-r from-[#F3F0E8] via-[#FAF9F6] to-[#F3F0E8]/50">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+            <div className="w-10 h-10 rounded-2xl bg-[#174D3A]/10 flex items-center justify-center text-[#174D3A]">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 text-lg flex items-center gap-2">
+              <h3 className="font-serif font-bold text-[#252824] text-lg flex items-center gap-2">
                 Grocery Order Review
-                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#174D3A]/10 text-[#174D3A]">
                   Round #{order.round_number}
                 </span>
               </h3>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-[#827F76]">
                 Language: {languageLabels[order.detected_language] || order.detected_language} • Flat {order.flat_number}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-1.5 text-[#827F76] hover:text-[#252824] rounded-xl hover:bg-[#F3F0E8] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -190,29 +190,29 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
           {error && (
-            <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
+            <div className="p-3.5 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {/* Original Raw Text */}
-          <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-200/80">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className="bg-[#F3F0E8]/60 rounded-2xl p-4 border border-[#EBE8DF]">
+            <div className="text-[10px] font-bold text-[#827F76] uppercase tracking-wider mb-1 flex items-center justify-between">
               <span>Original Message</span>
-              <span className="text-[10px] text-gray-400 font-normal">Immutable</span>
+              <span className="text-[10px] text-[#827F76]/70 font-normal">Immutable</span>
             </div>
-            <p className="text-sm font-medium text-gray-800 italic">"{order.raw_text}"</p>
+            <p className="text-sm font-medium text-[#252824] italic">"{order.raw_text}"</p>
           </div>
 
           {/* Status & Clarification Alerts */}
           {order.status === 'needs_clarification' && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
               <div className="flex items-start gap-2.5">
                 <HelpCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-semibold text-amber-900">Clarification Needed</h4>
-                  <p className="text-xs text-amber-700 mt-0.5">
+                  <h4 className="text-sm font-bold text-amber-900 font-serif">Clarification Needed</h4>
+                  <p className="text-xs text-amber-800 mt-0.5">
                     {order.clarification_prompt || 'Some items require your clarification on quantity or type.'}
                   </p>
                 </div>
@@ -225,13 +225,13 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                   value={clarificationText}
                   onChange={(e) => setClarificationText(e.target.value)}
                   placeholder="e.g., 2 litres sunflower oil, or 1 kg basmati rice"
-                  className="flex-1 text-sm rounded-lg border border-amber-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  className="flex-1 text-xs rounded-xl border border-amber-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/20 bg-white"
                   disabled={isSubmitting}
                 />
                 <button
                   type="submit"
                   disabled={isSubmitting || !clarificationText.trim()}
-                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                  className="px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   <span>Clarify</span>
@@ -241,22 +241,22 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
           )}
 
           {order.status === 'confirmed' && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5 text-emerald-800 text-sm">
-              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-2.5 text-[#174D3A] text-xs font-medium">
+              <CheckCircle className="w-5 h-5 text-[#174D3A] shrink-0" />
               <span>This order has been confirmed by you and is locked for the bulk round shopping list.</span>
             </div>
           )}
 
           {order.status === 'failed' && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center justify-between gap-2.5 text-red-800 text-sm">
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 flex items-center justify-between gap-2.5 text-rose-800 text-xs">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
                 <span>AI extraction encountered an error or timed out.</span>
               </div>
               <button
                 onClick={handleRetry}
                 disabled={isSubmitting}
-                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold"
+                className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-semibold transition-colors"
               >
                 {isSubmitting ? 'Retrying...' : 'Retry Extraction'}
               </button>
@@ -265,7 +265,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
 
           {/* Extracted Grocery Items Header */}
           <div className="flex items-center justify-between pt-1">
-            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+            <h4 className="text-xs font-bold text-[#252824] uppercase tracking-wider">
               Interpreted Items ({items.length})
             </h4>
             {order.status !== 'confirmed' && order.status !== 'rejected' && (
@@ -273,7 +273,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                 {!isEditing ? (
                   <button
                     onClick={() => setIsEditing(true)}
-                    className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
+                    className="text-xs text-[#174D3A] hover:text-[#123C2D] font-semibold flex items-center gap-1 px-2.5 py-1 rounded-xl hover:bg-[#F3F0E8] transition-colors"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                     <span>Edit Items</span>
@@ -282,7 +282,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                   <button
                     onClick={handleSaveItemEdits}
                     disabled={isSubmitting}
-                    className="text-xs bg-emerald-600 text-white font-medium flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-emerald-700 transition-colors"
+                    className="text-xs bg-[#174D3A] text-white font-semibold flex items-center gap-1 px-3 py-1.5 rounded-xl hover:bg-[#123C2D] transition-colors"
                   >
                     <span>Save Edits</span>
                   </button>
@@ -296,31 +296,31 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
             {items.map((it) => (
               <div
                 key={it.id}
-                className={`p-3 rounded-xl border transition-all ${
+                className={`p-3.5 rounded-2xl border transition-all ${
                   it.needs_clarification
-                    ? 'bg-amber-50/40 border-amber-300'
-                    : 'bg-white border-gray-200 hover:border-gray-300'
+                    ? 'bg-amber-50/50 border-amber-300'
+                    : 'bg-white border-[#EBE8DF] hover:border-[#DFDAD0] shadow-xs'
                 }`}
               >
                 {!isEditing ? (
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-900 text-sm">{it.normalized_name}</span>
+                        <span className="font-bold text-[#252824] text-sm">{it.normalized_name}</span>
                         {it.original_name !== it.normalized_name && (
-                          <span className="text-xs text-gray-400">({it.original_name})</span>
+                          <span className="text-xs text-[#827F76]">({it.original_name})</span>
                         )}
                         {it.category && (
-                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                          <span className="text-[10px] bg-[#F3F0E8] text-[#252824] px-2 py-0.5 rounded-full font-medium">
                             {it.category.replace(/_/g, ' ')}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                        {it.brand && <span className="text-gray-700 font-medium">Brand: {it.brand}</span>}
+                      <div className="flex items-center gap-2 mt-1 text-xs text-[#827F76]">
+                        {it.brand && <span className="text-[#252824] font-medium">Brand: {it.brand}</span>}
                         {it.variant && <span>Variant: {it.variant}</span>}
                         {it.needs_clarification && (
-                          <span className="text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded">
+                          <span className="text-amber-800 font-medium bg-amber-100/80 px-2 py-0.5 rounded-full">
                             {it.clarification_reason || 'Needs clarification'}
                           </span>
                         )}
@@ -329,11 +329,11 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
 
                     <div className="text-right">
                       {it.quantity ? (
-                        <span className="text-base font-bold text-emerald-700">
+                        <span className="text-base font-bold text-[#174D3A]">
                           {it.quantity} {it.unit || ''}
                         </span>
                       ) : (
-                        <span className="text-xs font-semibold text-amber-600 bg-amber-100 px-2 py-1 rounded-lg">
+                        <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-1 rounded-full">
                           Unspecified Qty
                         </span>
                       )}
@@ -348,7 +348,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                         value={it.normalized_name}
                         onChange={(e) => handleItemFieldChange(it.id, 'normalized_name', e.target.value)}
                         placeholder="Item name"
-                        className="col-span-6 text-sm border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500"
+                        className="col-span-6 text-xs border border-[#DFDAD0] rounded-xl px-2.5 py-1.5 focus:border-[#174D3A] focus:outline-none"
                       />
                       <input
                         type="number"
@@ -362,18 +362,18 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                           )
                         }
                         placeholder="Qty"
-                        className="col-span-3 text-sm border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500"
+                        className="col-span-3 text-xs border border-[#DFDAD0] rounded-xl px-2.5 py-1.5 focus:border-[#174D3A] focus:outline-none"
                       />
                       <input
                         type="text"
                         value={it.unit ?? ''}
                         onChange={(e) => handleItemFieldChange(it.id, 'unit', e.target.value)}
                         placeholder="Unit"
-                        className="col-span-2 text-sm border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500"
+                        className="col-span-2 text-xs border border-[#DFDAD0] rounded-xl px-2.5 py-1.5 focus:border-[#174D3A] focus:outline-none"
                       />
                       <button
                         onClick={() => handleDeleteItem(it.id)}
-                        className="col-span-1 text-gray-400 hover:text-red-600 flex items-center justify-center p-1 rounded hover:bg-red-50"
+                        className="col-span-1 text-[#827F76] hover:text-rose-600 flex items-center justify-center p-1 rounded-lg hover:bg-rose-50"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -384,7 +384,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
             ))}
 
             {items.length === 0 && (
-              <div className="p-6 text-center text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-xl">
+              <div className="p-6 text-center text-[#827F76] text-xs border-2 border-dashed border-[#EBE8DF] rounded-2xl">
                 No items in this order.
               </div>
             )}
@@ -393,7 +393,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
             {isEditing && !showAddItem && (
               <button
                 onClick={() => setShowAddItem(true)}
-                className="w-full py-2 border-2 border-dashed border-gray-200 hover:border-emerald-500 text-gray-500 hover:text-emerald-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full py-2.5 border-2 border-dashed border-[#DFDAD0] hover:border-[#174D3A] text-[#827F76] hover:text-[#174D3A] text-xs font-semibold rounded-2xl flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Item</span>
@@ -402,14 +402,14 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
 
             {/* Add Item Form */}
             {isEditing && showAddItem && (
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+              <div className="p-3.5 bg-[#F3F0E8]/50 rounded-2xl border border-[#EBE8DF] space-y-2">
                 <div className="grid grid-cols-12 gap-2">
                   <input
                     type="text"
                     value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     placeholder="New item name"
-                    className="col-span-6 text-sm border rounded-lg px-2.5 py-1.5"
+                    className="col-span-6 text-xs border border-[#DFDAD0] rounded-xl px-2.5 py-1.5 bg-white"
                   />
                   <input
                     type="number"
@@ -417,27 +417,27 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                     value={newItemQty}
                     onChange={(e) => setNewItemQty(e.target.value)}
                     placeholder="Qty"
-                    className="col-span-3 text-sm border rounded-lg px-2.5 py-1.5"
+                    className="col-span-3 text-xs border border-[#DFDAD0] rounded-xl px-2.5 py-1.5 bg-white"
                   />
                   <input
                     type="text"
                     value={newItemUnit}
                     onChange={(e) => setNewItemUnit(e.target.value)}
                     placeholder="kg"
-                    className="col-span-3 text-sm border rounded-lg px-2.5 py-1.5"
+                    className="col-span-3 text-xs border border-[#DFDAD0] rounded-xl px-2.5 py-1.5 bg-white"
                   />
                 </div>
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     onClick={() => setShowAddItem(false)}
-                    className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1"
+                    className="text-xs text-[#827F76] hover:text-[#252824] px-2 py-1 font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleAddNewItem}
                     disabled={!newItemName.trim()}
-                    className="text-xs bg-emerald-600 text-white font-medium px-3 py-1 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                    className="text-xs bg-[#174D3A] text-white font-semibold px-3 py-1.5 rounded-xl hover:bg-[#123C2D] disabled:opacity-50 transition-colors"
                   >
                     Add
                   </button>
@@ -448,11 +448,11 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-[#EBE8DF] bg-[#F3F0E8]/40 flex items-center justify-between">
           <button
             onClick={handleReject}
             disabled={isSubmitting || order.status === 'confirmed' || order.status === 'rejected'}
-            className="text-xs text-red-600 hover:text-red-700 font-semibold px-3 py-2 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-40 flex items-center gap-1"
+            className="text-xs text-rose-700 hover:text-rose-800 font-semibold px-3 py-2 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-40 flex items-center gap-1.5"
           >
             <XCircle className="w-4 h-4" />
             <span>Reject Order</span>
@@ -461,7 +461,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-100 rounded-xl text-sm font-medium transition-colors"
+              className="px-4 py-2 border border-[#DFDAD0] text-[#252824] hover:bg-[#F3F0E8] rounded-xl text-xs font-semibold transition-colors"
             >
               Close
             </button>
@@ -469,7 +469,7 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
               <button
                 onClick={handleConfirm}
                 disabled={isSubmitting || items.length === 0}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all disabled:opacity-50"
+                className="px-5 py-2 bg-[#174D3A] hover:bg-[#123C2D] text-white rounded-xl text-xs font-serif font-bold flex items-center gap-1.5 shadow-soft hover:shadow-card transition-all disabled:opacity-50"
               >
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                 <span>Confirm Grocery Order</span>

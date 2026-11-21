@@ -8,7 +8,7 @@ export interface CardProps {
 }
 
 /**
- * Reusable Card component with soft borders and restrained shadow.
+ * Reusable Card component adhering to Pinterest-inspired warm ivory & soft cream design tokens.
  */
 export const Card: React.FC<CardProps> = ({
   children,
@@ -19,8 +19,8 @@ export const Card: React.FC<CardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`rounded-2xl border border-[#E6ECE8] bg-white p-5 shadow-xs transition-all ${
-        hoverable ? 'hover:border-slate-300 hover:shadow-sm cursor-pointer' : ''
+      className={`rounded-2xl border border-[#EBE8DF] bg-white p-5 sm:p-6 shadow-soft transition-all duration-200 ${
+        hoverable ? 'hover:border-[#DFDAD0] hover:shadow-card cursor-pointer' : ''
       } ${className}`}
     >
       {children}

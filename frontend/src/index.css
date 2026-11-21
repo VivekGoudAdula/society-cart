@@ -1,17 +1,25 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #23865B;
-  --color-primary-hover: #196B48;
-  --color-surface-green: #EAF5EE;
-  --color-bg-main: #F8FAF9;
+  --color-primary: #174D3A;
+  --color-primary-hover: #113A2B;
+  --color-surface-green: #EBF2EE;
+  --color-warm-ivory: #FAF9F6;
+  --color-soft-cream: #F3F0E8;
+  --color-deep-forest: #174D3A;
+  --color-muted-sage: #A7B8A0;
+  --color-charcoal: #252824;
+  --color-warm-grey: #827F76;
+  --color-bg-main: #FAF9F6;
   --color-card-bg: #FFFFFF;
-  --color-text-main: #18231E;
-  --color-text-secondary: #718078;
-  --color-border-subtle: #E6ECE8;
-  --color-warning: #D99A32;
-  --color-danger: #D9534F;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-text-main: #252824;
+  --color-text-secondary: #827F76;
+  --color-border-subtle: #EBE8DF;
+  --color-border-warm: #DFDAD0;
+  --color-warning: #C87D25;
+  --color-danger: #C0392B;
+  --font-sans: "Plus Jakarta Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Fraunces", "Playfair Display", Georgia, serif;
 }
 
 :root {
@@ -20,11 +28,32 @@
 
 body {
   margin: 0;
-  background-color: var(--color-bg-main);
-  color: var(--color-text-main);
+  background-color: var(--color-warm-ivory);
+  color: var(--color-charcoal);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+/* Subtle Warm Natural Shadows */
+.shadow-soft {
+  box-shadow: 0 2px 10px -2px rgba(37, 40, 36, 0.04), 0 1px 3px -1px rgba(37, 40, 36, 0.02);
+}
+
+.shadow-card {
+  box-shadow: 0 4px 20px -4px rgba(37, 40, 36, 0.06), 0 2px 6px -2px rgba(37, 40, 36, 0.03);
+}
+
+.shadow-lifted {
+  box-shadow: 0 12px 32px -8px rgba(23, 77, 58, 0.12), 0 4px 12px -2px rgba(37, 40, 36, 0.04);
 }
 
 /* Custom scrollbars for chat and tables */
@@ -36,9 +65,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
+  background: #DFDAD0;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #A7B8A0;
 }

@@ -17,6 +17,9 @@ import {
   ArrowLeft,
   HelpCircle,
   AlertCircle,
+  Receipt,
+  CreditCard,
+  TrendingDown,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PageHeader } from '../components/common/PageHeader';
@@ -36,6 +39,10 @@ import { SpendingAndSavingsSection } from '../components/billing/SpendingAndSavi
 
 type DashboardTab = 'master' | 'packing' | 'purchases' | 'allocation' | 'spending' | 'unresolved';
 
+/**
+ * Screen 6: Volunteer Shopping Dashboard & Bulk Procurement Hub.
+ * Redesigned in Pinterest-inspired warm ivory & deep forest green palette.
+ */
 export const ShoppingListPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -215,13 +222,15 @@ export const ShoppingListPage: React.FC = () => {
 
   if (!isVolunteerOrAdmin) {
     return (
-      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
-        <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
-        <h2 className="text-lg font-bold text-slate-800">Volunteer Access Required</h2>
-        <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
+      <div className="p-8 text-center bg-white rounded-3xl border border-[#EBE8DF] shadow-soft max-w-md mx-auto my-12">
+        <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto mb-3">
+          <AlertTriangle className="h-6 w-6" />
+        </div>
+        <h2 className="text-lg font-bold text-[#252824]">Volunteer Access Required</h2>
+        <p className="text-xs text-[#827F76] mt-1.5 leading-relaxed">
           The consolidated grocery shopping list and packing manifests are reserved for authorized society volunteers and administrators.
         </p>
-        <Button variant="outline" className="mt-4" onClick={() => navigate('/resident')}>
+        <Button variant="outline" size="sm" className="mt-5" onClick={() => navigate('/resident')}>
           Go to Resident Dashboard
         </Button>
       </div>
@@ -246,11 +255,11 @@ export const ShoppingListPage: React.FC = () => {
       {/* Main Page Header */}
       <div className="print:hidden">
         <PageHeader
-          title="Volunteer Shopping Dashboard"
-          description={`${activeSocietyPair?.society.name || 'Society'} • Consolidated bulk orders & packing manifests`}
+          title="Consolidated Shopping List"
+          description={`${activeSocietyPair?.society.name || 'Society'} • Aggregated grocery manifest & packing allocation`}
           badge={
             shoppingList ? (
-              <Badge variant="success" size="md">
+              <Badge variant="primary" size="md">
                 Round #{shoppingList.round_number} (v{shoppingList.version})
               </Badge>
             ) : (
@@ -260,7 +269,7 @@ export const ShoppingListPage: React.FC = () => {
             )
           }
           actions={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               <Button
                 size="sm"
                 variant="outline"
@@ -281,17 +290,15 @@ export const ShoppingListPage: React.FC = () => {
                     Print Checklist
                   </Button>
 
-                  <div className="relative inline-flex group">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={isExporting}
-                      leftIcon={<FileSpreadsheet className="h-4 w-4 text-emerald-600" />}
-                      onClick={() => handleExportCsv('consolidated')}
-                    >
-                      Export CSV
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isExporting}
+                    leftIcon={<FileSpreadsheet className="h-4 w-4 text-[#174D3A]" />}
+                    onClick={() => handleExportCsv('consolidated')}
+                  >
+                    Export CSV
+                  </Button>
                 </>
               )}
 
@@ -301,6 +308,7 @@ export const ShoppingListPage: React.FC = () => {
                 onClick={handleCompile}
                 disabled={isCompiling || !targetRoundId}
                 leftIcon={<RefreshCw className={`h-4 w-4 ${isCompiling ? 'animate-spin' : ''}`} />}
+                className="shadow-sm shadow-[#174D3A]/20"
               >
                 {shoppingList ? 'Recompile List' : 'Compile Shopping List'}
               </Button>
@@ -309,12 +317,12 @@ export const ShoppingListPage: React.FC = () => {
         />
       </div>
 
-      {/* Round Selection & Error Banner */}
+      {/* Round Selection Bar */}
       {availableRounds.length > 1 && (
-        <Card className="p-3 bg-slate-50 border-slate-200 print:hidden">
+        <Card className="p-3 bg-white border-[#EBE8DF] shadow-2xs print:hidden">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-              <Clock className="h-4 w-4 text-[#23865B]" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#252824]">
+              <Clock className="h-4 w-4 text-[#174D3A]" />
               <span>Select Round:</span>
             </div>
             <div className="flex items-center gap-2 overflow-x-auto py-1">
@@ -322,10 +330,10 @@ export const ShoppingListPage: React.FC = () => {
                 <button
                   key={r.id}
                   onClick={() => navigate(`/shopping-list?roundId=${r.id}`)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                     r.id === targetRoundId
-                      ? 'bg-[#23865B] text-white shadow-sm font-semibold'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300'
+                      ? 'bg-[#174D3A] text-white shadow-xs'
+                      : 'bg-[#FAF9F6] text-[#827F76] border border-[#DFDAD0] hover:bg-[#F3F0E8] hover:text-[#252824]'
                   }`}
                 >
                   Round #{r.round_number} ({r.status.toUpperCase()})
@@ -337,19 +345,21 @@ export const ShoppingListPage: React.FC = () => {
       )}
 
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-800 flex items-center gap-3 print:hidden">
-          <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-3 print:hidden">
+          <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Empty State: Not yet compiled */}
       {!isLoading && !shoppingList && (
-        <Card className="p-12 text-center border-dashed border-2 border-slate-200 bg-white">
-          <ShoppingBag className="h-12 w-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800">Shopping List Not Compiled Yet</h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-            Compile the verified resident grocery orders for this round into a consolidated bulk shopping manifest.
+        <Card className="p-12 text-center border-dashed border-2 border-[#DFDAD0] bg-white shadow-soft">
+          <div className="h-14 w-14 rounded-2xl bg-[#EBF2EE] text-[#174D3A] flex items-center justify-center mx-auto mb-4 shadow-xs">
+            <ShoppingBag className="h-7 w-7" />
+          </div>
+          <h3 className="text-lg font-bold text-[#252824]">Shopping List Not Compiled Yet</h3>
+          <p className="text-xs sm:text-sm text-[#827F76] mt-1.5 max-w-md mx-auto leading-relaxed">
+            Compile the confirmed resident grocery orders for this round into a single, consolidated bulk shopping manifest.
           </p>
           <div className="mt-6 flex justify-center">
             <Button
@@ -358,6 +368,7 @@ export const ShoppingListPage: React.FC = () => {
               onClick={handleCompile}
               disabled={isCompiling || !targetRoundId}
               leftIcon={<Sparkles className="h-4 w-4" />}
+              className="shadow-md shadow-[#174D3A]/20"
             >
               {isCompiling ? 'Compiling Master List...' : 'Compile Shopping List'}
             </Button>
@@ -367,9 +378,9 @@ export const ShoppingListPage: React.FC = () => {
 
       {/* Loading Skeleton */}
       {isLoading && (
-        <div className="py-12 text-center text-slate-400">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-[#23865B] mb-2" />
-          <span className="text-xs font-medium">Loading society grocery manifest...</span>
+        <div className="py-16 text-center text-[#827F76]">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-[#174D3A] mb-3" />
+          <span className="text-xs font-medium">Loading consolidated grocery manifest...</span>
         </div>
       )}
 
@@ -382,40 +393,40 @@ export const ShoppingListPage: React.FC = () => {
               label="Confirmed Flats"
               value={`${shoppingList.summary.total_confirmed_flats} Flats`}
               subtext={`${shoppingList.summary.total_confirmed_orders} confirmed orders`}
-              icon={<Users className="h-5 w-5 text-[#23865B]" />}
+              icon={<Users className="h-5 w-5 text-[#174D3A]" />}
             />
             <StatCard
               label="Distinct Bulk Products"
               value={`${shoppingList.summary.total_distinct_items} Items`}
               subtext={`${shoppingList.summary.total_items_count} individual request lines`}
-              icon={<ShoppingBag className="h-5 w-5 text-emerald-600" />}
+              icon={<ShoppingBag className="h-5 w-5 text-[#174D3A]" />}
             />
             <StatCard
               label="Procurement Progress"
               value={`${procuredCount} of ${totalDistinctItems}`}
               subtext={`${procurementPercent}% items procured`}
-              icon={<CheckCircle2 className="h-5 w-5 text-teal-600" />}
+              icon={<CheckCircle2 className="h-5 w-5 text-[#174D3A]" />}
             />
             <StatCard
               label="Pending Confirmation"
               value={shoppingList.summary.total_unresolved_orders.toString()}
               subtext={`${shoppingList.summary.total_unresolved_flats} flats awaiting review`}
-              icon={<AlertTriangle className={`h-5 w-5 ${shoppingList.summary.has_unresolved_orders ? 'text-amber-500' : 'text-slate-400'}`} />}
+              icon={<AlertTriangle className={`h-5 w-5 ${shoppingList.summary.has_unresolved_orders ? 'text-[#C87D25]' : 'text-[#827F76]'}`} />}
             />
           </div>
 
           {/* Unresolved Orders Warning Banner */}
           {shoppingList.summary.has_unresolved_orders && (
-            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/70 border border-amber-200 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden shadow-xs">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <AlertTriangle className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900">
                     Pending Resident Confirmations ({shoppingList.summary.total_unresolved_orders} Orders Excluded)
                   </h4>
-                  <p className="text-xs text-amber-700 mt-0.5">
+                  <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
                     Some residents still have orders awaiting confirmation or clarification across{' '}
-                    <strong>{shoppingList.summary.total_unresolved_flats} flats</strong>. They have been excluded from this shopping list.
+                    <strong>{shoppingList.summary.total_unresolved_flats} flats</strong>. They are safely excluded from this manifest.
                   </p>
                 </div>
               </div>
@@ -423,96 +434,96 @@ export const ShoppingListPage: React.FC = () => {
                 size="sm"
                 variant="outline"
                 onClick={() => setActiveTab('unresolved')}
-                className="shrink-0 bg-white border-amber-300 text-amber-900 hover:bg-amber-100"
+                className="shrink-0 bg-white border-amber-300 text-amber-950 hover:bg-amber-100"
               >
-                Inspect {shoppingList.summary.total_unresolved_orders} Unresolved Orders
+                Inspect {shoppingList.summary.total_unresolved_orders} Orders
               </Button>
             </div>
           )}
 
-          {/* Navigation Tabs */}
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-2 print:hidden">
-            <div className="flex items-center gap-2">
+          {/* Navigation Tabs Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EBE8DF] pb-3 print:hidden">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
               <button
                 onClick={() => setActiveTab('master')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   activeTab === 'master'
-                    ? 'bg-[#23865B] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'bg-[#174D3A] text-white shadow-xs'
+                    : 'text-[#827F76] hover:text-[#252824] hover:bg-[#F3F0E8]'
                 }`}
               >
                 <ShoppingBag className="h-4 w-4" />
-                <span>Master Shopping List</span>
-                <Badge variant={activeTab === 'master' ? 'neutral' : 'neutral'} size="sm">
+                <span>Master Manifest</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  activeTab === 'master' ? 'bg-white/20 text-white' : 'bg-[#EBF2EE] text-[#174D3A]'
+                }`}>
                   {shoppingList.summary.total_distinct_items}
-                </Badge>
+                </span>
               </button>
 
               <button
                 onClick={() => setActiveTab('packing')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   activeTab === 'packing'
-                    ? 'bg-[#23865B] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'bg-[#174D3A] text-white shadow-xs'
+                    : 'text-[#827F76] hover:text-[#252824] hover:bg-[#F3F0E8]'
                 }`}
               >
                 <PackageCheck className="h-4 w-4" />
-                <span>Flat-wise Packing Breakdown</span>
-                <Badge variant="neutral" size="sm">
+                <span>Flat Packing</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  activeTab === 'packing' ? 'bg-white/20 text-white' : 'bg-[#EBF2EE] text-[#174D3A]'
+                }`}>
                   {shoppingList.packing_breakdown.length} Flats
-                </Badge>
+                </span>
               </button>
 
               <button
                 onClick={() => setActiveTab('purchases')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   activeTab === 'purchases'
-                    ? 'bg-[#196B48] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'bg-[#174D3A] text-white shadow-xs'
+                    : 'text-[#827F76] hover:text-[#252824] hover:bg-[#F3F0E8]'
                 }`}
               >
+                <Receipt className="h-4 w-4" />
                 <span>Record Purchases</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('allocation')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   activeTab === 'allocation'
-                    ? 'bg-[#196B48] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'bg-[#174D3A] text-white shadow-xs'
+                    : 'text-[#827F76] hover:text-[#252824] hover:bg-[#F3F0E8]'
                 }`}
               >
-                <span>Cost Allocation & Bills</span>
+                <CreditCard className="h-4 w-4" />
+                <span>Cost Allocation</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('spending')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   activeTab === 'spending'
-                    ? 'bg-[#196B48] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'bg-[#174D3A] text-white shadow-xs'
+                    : 'text-[#827F76] hover:text-[#252824] hover:bg-[#F3F0E8]'
                 }`}
               >
-                <span>Spending & Savings</span>
+                <TrendingDown className="h-4 w-4" />
+                <span>Verified Savings</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('unresolved')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   activeTab === 'unresolved'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'bg-[#C87D25] text-white shadow-xs'
+                    : 'text-[#827F76] hover:text-[#252824] hover:bg-[#F3F0E8]'
                 }`}
               >
                 <HelpCircle className="h-4 w-4" />
-                <span>Pending Confirmations</span>
-                {shoppingList.summary.total_unresolved_orders > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    activeTab === 'unresolved' ? 'bg-amber-800 text-white' : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {shoppingList.summary.total_unresolved_orders}
-                  </span>
-                )}
+                <span>Unresolved ({shoppingList.summary.total_unresolved_orders})</span>
               </button>
             </div>
 
@@ -526,7 +537,7 @@ export const ShoppingListPage: React.FC = () => {
                     ? 'Filter items, brands, flats...'
                     : activeTab === 'packing'
                     ? 'Search flat or resident...'
-                    : 'Filter pending orders...'
+                    : 'Filter records...'
                 }
               />
             </div>
@@ -541,10 +552,10 @@ export const ShoppingListPage: React.FC = () => {
                   <button
                     key={cf.id}
                     onClick={() => setSelectedCategory(cf.id)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
                       selectedCategory === cf.id
-                        ? 'bg-[#18231E] text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-[#174D3A] text-white shadow-xs'
+                        : 'bg-[#F3F0E8] text-[#827F76] hover:bg-[#EBE8DF] hover:text-[#252824]'
                     }`}
                   >
                     {cf.label}
@@ -553,25 +564,25 @@ export const ShoppingListPage: React.FC = () => {
               </div>
 
               {filteredCategoryGroups.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
-                  <p className="text-xs text-slate-500">No confirmed items match your filter criteria.</p>
+                <div className="p-8 text-center bg-white rounded-2xl border border-[#EBE8DF]">
+                  <p className="text-xs text-[#827F76]">No confirmed items match your filter criteria.</p>
                 </div>
               ) : (
                 filteredCategoryGroups.map((cg) => (
-                  <Card key={cg.category} className="p-5 border-slate-200 print:border-black print:shadow-none mb-6">
-                    <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 print:border-black">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full bg-[#23865B] print:hidden" />
-                        <h3 className="text-sm font-bold text-[#18231E] uppercase tracking-wider">
+                  <Card key={cg.category} className="p-5 sm:p-6 bg-white border-[#EBE8DF] shadow-soft print:border-black print:shadow-none mb-6">
+                    <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#EBE8DF] print:border-black">
+                      <div className="flex items-center gap-2.5">
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#174D3A] print:hidden" />
+                        <h3 className="text-sm font-bold text-[#252824] uppercase tracking-wider">
                           {cg.category_name}
                         </h3>
-                        <Badge variant="neutral" size="sm">
+                        <Badge variant="sage" size="sm">
                           {cg.items.length} {cg.items.length === 1 ? 'Product' : 'Products'}
                         </Badge>
                       </div>
                     </div>
 
-                    <div className="divide-y divide-slate-100 print:divide-black">
+                    <div className="divide-y divide-[#EBE8DF]/70 print:divide-black">
                       {cg.items.map((item) => {
                         const isPurchased = purchasedItemKeys[item.item_key];
                         const isExpanded = expandedItems[item.item_key];
@@ -580,7 +591,7 @@ export const ShoppingListPage: React.FC = () => {
                           <div
                             key={item.item_key}
                             className={`py-3.5 transition-colors ${
-                              isPurchased ? 'bg-emerald-50/50 print:bg-white' : ''
+                              isPurchased ? 'bg-[#EBF2EE]/40 print:bg-white' : ''
                             }`}
                           >
                             <div className="flex items-center justify-between gap-4">
@@ -590,34 +601,34 @@ export const ShoppingListPage: React.FC = () => {
                                   type="checkbox"
                                   checked={isPurchased || false}
                                   onChange={() => togglePurchased(item.item_key)}
-                                  className="h-4 w-4 rounded border-slate-300 text-[#23865B] focus:ring-[#23865B] cursor-pointer"
+                                  className="h-4 w-4 rounded border-[#DFDAD0] text-[#174D3A] focus:ring-[#174D3A] cursor-pointer"
                                 />
 
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
-                                      className={`text-sm font-bold text-slate-900 ${
-                                        isPurchased ? 'line-through text-slate-400' : ''
+                                      className={`text-sm font-bold text-[#252824] ${
+                                        isPurchased ? 'line-through text-[#827F76]' : ''
                                       }`}
                                     >
                                       {item.normalized_name}
                                     </span>
 
                                     {item.brand && (
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#EBF2EE] text-[#174D3A] border border-[#174D3A]/20">
                                         Brand: {item.brand}
                                       </span>
                                     )}
 
                                     {item.variant && (
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F3F0E8] text-[#252824] border border-[#DFDAD0]">
                                         {item.variant}
                                       </span>
                                     )}
                                   </div>
 
                                   {item.original_names.length > 0 && (
-                                    <span className="text-[11px] text-slate-400 italic block mt-0.5">
+                                    <span className="text-[11px] text-[#827F76] italic block mt-0.5">
                                       Requested as: {item.original_names.join(', ')}
                                     </span>
                                   )}
@@ -627,10 +638,10 @@ export const ShoppingListPage: React.FC = () => {
                               {/* Right: Quantity + Unit + Contributing Flats Toggle */}
                               <div className="flex items-center gap-4 shrink-0">
                                 <div className="text-right">
-                                  <span className="text-base font-black text-[#23865B] tracking-tight">
+                                  <span className="text-base font-black text-[#174D3A] tracking-tight">
                                     {item.total_quantity} {item.unit}
                                   </span>
-                                  <span className="text-[11px] text-slate-500 block">
+                                  <span className="text-[11px] text-[#827F76] block">
                                     across {item.contributing_flats_count} {item.contributing_flats_count === 1 ? 'flat' : 'flats'}
                                   </span>
                                 </div>
@@ -638,7 +649,7 @@ export const ShoppingListPage: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => toggleItemExpanded(item.item_key)}
-                                  className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 print:hidden"
+                                  className="p-1 rounded-lg hover:bg-[#F3F0E8] text-[#827F76] hover:text-[#252824] print:hidden transition-colors"
                                   title="View contributing flats"
                                 >
                                   {isExpanded ? (
@@ -652,21 +663,21 @@ export const ShoppingListPage: React.FC = () => {
 
                             {/* Accordion: Contributing flats list */}
                             {isExpanded && (
-                              <div className="mt-3 ml-7 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 print:hidden">
-                                <span className="font-semibold text-slate-700 block text-[11px] uppercase tracking-wider">
+                              <div className="mt-3 ml-7 p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#DFDAD0] text-xs space-y-1.5 print:hidden">
+                                <span className="font-bold text-[#252824] block text-[11px] uppercase tracking-wider">
                                   Breakdown by Flat:
                                 </span>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
                                   {item.contributing_flats.map((cf, idx) => (
                                     <div
                                       key={`${cf.order_id}_${idx}`}
-                                      className="p-2 bg-white rounded-lg border border-slate-200 flex justify-between items-center"
+                                      className="p-2.5 bg-white rounded-xl border border-[#EBE8DF] flex justify-between items-center shadow-2xs"
                                     >
                                       <div>
-                                        <span className="font-bold text-slate-800">{cf.flat_number}</span>
-                                        <span className="text-[10px] text-slate-500 block">{cf.user_name}</span>
+                                        <span className="font-bold text-[#252824]">{cf.flat_number}</span>
+                                        <span className="text-[10px] text-[#827F76] block">{cf.user_name}</span>
                                       </div>
-                                      <span className="font-black text-[#23865B]">
+                                      <span className="font-black text-[#174D3A]">
                                         {cf.quantity} {cf.unit || item.unit}
                                       </span>
                                     </div>
@@ -688,8 +699,8 @@ export const ShoppingListPage: React.FC = () => {
           {activeTab === 'packing' && (
             <div className="space-y-4 print:block">
               <div className="flex items-center justify-between pb-2 print:hidden">
-                <span className="text-xs text-slate-500 font-medium">
-                  {filteredPackingBreakdown.length} Flats with confirmed deliveries
+                <span className="text-xs text-[#827F76] font-medium">
+                  {filteredPackingBreakdown.length} Flats with confirmed orders
                 </span>
                 <Button
                   size="sm"
@@ -702,21 +713,21 @@ export const ShoppingListPage: React.FC = () => {
               </div>
 
               {filteredPackingBreakdown.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
-                  <p className="text-xs text-slate-500">No flat packing records match your search.</p>
+                <div className="p-8 text-center bg-white rounded-2xl border border-[#EBE8DF]">
+                  <p className="text-xs text-[#827F76]">No flat packing records match your search.</p>
                 </div>
               ) : (
                 filteredPackingBreakdown.map((fb) => (
-                  <Card key={fb.flat_number} className="p-5 border-slate-200 print:border-black print:mb-4">
-                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 print:border-black">
+                  <Card key={fb.flat_number} className="p-5 sm:p-6 bg-white border-[#EBE8DF] shadow-soft print:border-black print:mb-4">
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#EBE8DF] print:border-black">
                       <div className="flex items-center gap-2">
-                        <PackageCheck className="h-4 w-4 text-[#23865B]" />
-                        <h4 className="text-sm font-bold text-[#18231E]">
+                        <PackageCheck className="h-4 w-4 text-[#174D3A]" />
+                        <h4 className="text-sm font-bold text-[#252824]">
                           Flat {fb.flat_number}
                         </h4>
-                        <span className="text-xs text-slate-500">({fb.user_name})</span>
+                        <span className="text-xs text-[#827F76]">({fb.user_name})</span>
                       </div>
-                      <Badge variant="neutral" size="sm">
+                      <Badge variant="sage" size="sm">
                         {fb.items.length} {fb.items.length === 1 ? 'Item' : 'Items'}
                       </Badge>
                     </div>
@@ -729,31 +740,31 @@ export const ShoppingListPage: React.FC = () => {
                         return (
                           <div
                             key={packedKey}
-                            className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-2 transition-all ${
+                            className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 transition-all ${
                               isPacked
-                                ? 'bg-emerald-50/60 border-emerald-200 text-slate-400'
-                                : 'bg-slate-50/60 border-slate-200 text-slate-800'
+                                ? 'bg-[#EBF2EE]/50 border-[#174D3A]/20 text-[#827F76]'
+                                : 'bg-[#FAF9F6] border-[#DFDAD0] text-[#252824]'
                             }`}
                           >
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               <input
                                 type="checkbox"
                                 checked={isPacked || false}
                                 onChange={() => togglePacked(packedKey)}
-                                className="h-3.5 w-3.5 rounded border-slate-300 text-[#23865B] cursor-pointer"
+                                className="h-4 w-4 rounded border-[#DFDAD0] text-[#174D3A] cursor-pointer"
                               />
                               <div className="min-w-0">
-                                <span className={`font-semibold block truncate ${isPacked ? 'line-through' : ''}`}>
+                                <span className={`font-bold block truncate ${isPacked ? 'line-through text-[#827F76]' : ''}`}>
                                   {it.normalized_name}
                                 </span>
                                 {(it.brand || it.variant) && (
-                                  <span className="text-[10px] text-slate-400 block truncate">
+                                  <span className="text-[10px] text-[#827F76] block truncate">
                                     {[it.brand, it.variant].filter(Boolean).join(' • ')}
                                   </span>
                                 )}
                               </div>
                             </div>
-                            <span className="font-bold text-[#23865B] shrink-0">
+                            <span className="font-black text-[#174D3A] shrink-0">
                               {it.quantity} {it.unit}
                             </span>
                           </div>
@@ -769,30 +780,30 @@ export const ShoppingListPage: React.FC = () => {
           {/* TAB 3: PENDING RESIDENT CONFIRMATIONS */}
           {activeTab === 'unresolved' && (
             <div className="space-y-4 print:hidden">
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
-                <HelpCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs text-amber-900 flex items-center gap-2.5">
+                <HelpCircle className="h-4 w-4 text-amber-700 shrink-0" />
                 <span>
                   These orders cannot enter the master shopping list until residents confirm or clarify them in their dashboard.
                 </span>
               </div>
 
               {shoppingList.unresolved_orders.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
-                  <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                  <h4 className="text-sm font-bold text-slate-800">All Submitted Orders Are Confirmed!</h4>
-                  <p className="text-xs text-slate-500 mt-1">
+                <div className="p-8 text-center bg-white rounded-2xl border border-[#EBE8DF]">
+                  <CheckCircle2 className="h-8 w-8 text-[#174D3A] mx-auto mb-2" />
+                  <h4 className="text-sm font-bold text-[#252824]">All Submitted Orders Are Confirmed!</h4>
+                  <p className="text-xs text-[#827F76] mt-1">
                     There are no pending, ambiguous, or failed grocery submissions for this round.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {shoppingList.unresolved_orders.map((uo) => (
-                    <Card key={uo.order_id} className="p-4 border-slate-200">
+                    <Card key={uo.order_id} className="p-4 sm:p-5 bg-white border-[#EBE8DF] shadow-soft">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-slate-900">Flat {uo.flat_number}</span>
-                            <span className="text-xs text-slate-500">• {uo.user_name}</span>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-[#252824]">Flat {uo.flat_number}</span>
+                            <span className="text-xs text-[#827F76]">• {uo.user_name}</span>
                             <Badge
                               variant={
                                 uo.status === 'needs_clarification'
@@ -807,25 +818,25 @@ export const ShoppingListPage: React.FC = () => {
                             </Badge>
                           </div>
 
-                          <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg font-mono">
+                          <p className="text-xs text-[#252824] bg-[#FAF9F6] p-2.5 rounded-xl border border-[#DFDAD0] font-mono">
                             "{uo.raw_text}"
                           </p>
 
                           {uo.clarification_prompt && (
-                            <p className="text-xs text-amber-700 font-semibold pt-1">
+                            <p className="text-xs text-amber-800 font-semibold pt-1">
                               Clarification Requested: {uo.clarification_prompt}
                             </p>
                           )}
 
                           {uo.error_message && (
-                            <p className="text-xs text-red-600 pt-1">
+                            <p className="text-xs text-rose-700 font-semibold pt-1">
                               Error: {uo.error_message}
                             </p>
                           )}
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className="text-[10px] text-slate-400 block">
+                          <span className="text-[10px] text-[#827F76] block">
                             Last Updated: {new Date(uo.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>

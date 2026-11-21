@@ -133,7 +133,7 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
 
       {/* Top Reconciliation Status Card */}
       {preview && (
-        <Card className={`p-6 border-2 ${preview.is_reconciled ? 'border-emerald-200 bg-emerald-50/20' : 'border-amber-200 bg-amber-50/30'}`}>
+        <Card className={`p-6 border-2 ${preview.is_reconciled ? 'border-[#A7B8A0] bg-[#F3F0E8]/60' : 'border-amber-200 bg-amber-50/40'}`}>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
@@ -146,10 +146,10 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
                   </Badge>
                 )}
               </div>
-              <h3 className="text-base font-bold text-[#18231E]">
+              <h3 className="text-base font-serif font-bold text-[#252824]">
                 {preview.reconciliation_message}
               </h3>
-              <p className="text-xs text-[#718078]">
+              <p className="text-xs text-[#827F76]">
                 Formula: Actual Purchases (₹{preview.total_actual_purchase_cost.toFixed(2)}) =
                 Allocated (₹{preview.total_allocated_flats_cost.toFixed(2)}) +
                 Unallocated (₹{preview.unallocated_cost.toFixed(2)})
@@ -186,23 +186,23 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
 
       {/* Optional Shared Logistics Input (Only before finalization) */}
       {!isFinalized && (
-        <Card className="p-4 bg-slate-50 border border-slate-200">
+        <Card className="p-4 bg-[#F3F0E8]/40 border border-[#EBE8DF]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h4 className="text-xs font-bold text-[#18231E]">Additional Shared Round Expenses (Optional)</h4>
-              <p className="text-[11px] text-[#718078]">
+              <h4 className="text-xs font-bold text-[#252824]">Additional Shared Round Expenses (Optional)</h4>
+              <p className="text-[11px] text-[#827F76]">
                 e.g. Porter / Auto / Delivery fee split evenly across all participating flats.
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-bold text-[#18231E]">₹</span>
+              <span className="text-xs font-bold text-[#252824]">₹</span>
               <input
                 type="number"
                 step="1"
                 value={deliveryCost}
                 onChange={(e) => setDeliveryCost(e.target.value)}
                 placeholder="0"
-                className="w-24 text-xs rounded-lg border border-slate-200 p-2 bg-white text-right focus:outline-none focus:border-emerald-600 font-bold"
+                className="w-24 text-xs rounded-xl border border-[#DFDAD0] p-2 bg-white text-right focus:outline-none focus:border-[#174D3A] focus:ring-2 focus:ring-[#174D3A]/10 font-bold"
               />
             </div>
           </div>
@@ -211,14 +211,14 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
 
       {/* Purchase-to-Order Fulfillment Summary */}
       {preview && preview.matching_summaries.length > 0 && (
-        <Card className="p-0 overflow-hidden">
-          <div className="p-4 border-b border-[#E6ECE8] flex items-center justify-between">
-            <h4 className="text-sm font-bold text-[#18231E]">Purchase Fulfillment Matching</h4>
-            <span className="text-xs text-[#718078]">{preview.matching_summaries.length} Products</span>
+        <Card className="p-0 overflow-hidden border-[#EBE8DF]">
+          <div className="p-4 border-b border-[#EBE8DF] flex items-center justify-between">
+            <h4 className="text-sm font-serif font-bold text-[#252824]">Purchase Fulfillment Matching</h4>
+            <span className="text-xs text-[#827F76]">{preview.matching_summaries.length} Products</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#F8FAF9] border-b border-[#E6ECE8] text-[#718078] font-bold uppercase tracking-wider">
+              <thead className="bg-[#F3F0E8] border-b border-[#EBE8DF] text-[#827F76] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Item Name</th>
                   <th className="py-3 px-4 text-center">Requested Qty</th>
@@ -229,36 +229,36 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
                   <th className="py-3 px-4 text-right">Total Allocated</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E6ECE8]">
+              <tbody className="divide-y divide-[#EBE8DF]">
                 {preview.matching_summaries.map((m) => (
-                  <tr key={m.item_key} className="hover:bg-slate-50/60 transition-colors">
+                  <tr key={m.item_key} className="hover:bg-[#FAF9F6] transition-colors">
                     <td className="py-3 px-4">
-                      <span className="font-bold text-[#18231E]">{m.item_name}</span>
+                      <span className="font-bold text-[#252824]">{m.item_name}</span>
                       {(m.brand || m.variant) && (
-                        <span className="text-[11px] text-[#718078] block">
+                        <span className="text-[11px] text-[#827F76] block">
                           {[m.brand, m.variant].filter(Boolean).join(' • ')}
                         </span>
                       )}
                       {m.is_substituted && (
-                        <span className="inline-block mt-0.5 text-[10px] text-amber-700 bg-amber-50 px-1 rounded">
+                        <span className="inline-block mt-0.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
                           Substituted with {m.substitute_item_name}
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-center text-[#718078]">{m.requested_quantity} {m.unit}</td>
-                    <td className="py-3 px-4 text-center font-bold text-[#18231E]">{m.purchased_quantity} {m.unit}</td>
-                    <td className="py-3 px-4 text-center text-emerald-700 font-semibold">{m.fulfilled_quantity} {m.unit}</td>
+                    <td className="py-3 px-4 text-center text-[#827F76]">{m.requested_quantity} {m.unit}</td>
+                    <td className="py-3 px-4 text-center font-bold text-[#252824]">{m.purchased_quantity} {m.unit}</td>
+                    <td className="py-3 px-4 text-center text-[#174D3A] font-semibold">{m.fulfilled_quantity} {m.unit}</td>
                     <td className="py-3 px-4 text-center">
                       {m.unfulfilled_quantity > 0 ? (
-                        <span className="text-rose-600 font-bold">{m.unfulfilled_quantity} {m.unit}</span>
+                        <span className="text-rose-700 font-bold">{m.unfulfilled_quantity} {m.unit}</span>
                       ) : (
                         <span className="text-slate-400">0</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right text-[#23865B] font-semibold">
+                    <td className="py-3 px-4 text-right text-[#174D3A] font-semibold">
                       ₹{m.effective_unit_cost.toFixed(2)}/{m.unit}
                     </td>
-                    <td className="py-3 px-4 text-right font-black text-[#18231E]">
+                    <td className="py-3 px-4 text-right font-bold text-[#252824]">
                       ₹{m.total_cost.toFixed(2)}
                     </td>
                   </tr>
@@ -271,43 +271,43 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
 
       {/* Flat-wise Cost Allocations */}
       {preview && (
-        <Card className="p-0 overflow-hidden">
-          <div className="p-4 border-b border-[#E6ECE8] flex items-center justify-between">
-            <h4 className="text-sm font-bold text-[#18231E]">Per-Flat Bill Allocations</h4>
-            <span className="text-xs text-[#718078]">{preview.flat_allocations.length} Flats</span>
+        <Card className="p-0 overflow-hidden border-[#EBE8DF]">
+          <div className="p-4 border-b border-[#EBE8DF] flex items-center justify-between">
+            <h4 className="text-sm font-serif font-bold text-[#252824]">Per-Flat Bill Allocations</h4>
+            <span className="text-xs text-[#827F76]">{preview.flat_allocations.length} Flats</span>
           </div>
 
-          <div className="divide-y divide-[#E6ECE8]">
+          <div className="divide-y divide-[#EBE8DF]">
             {preview.flat_allocations.map((flat) => {
               const isExpanded = !!expandedFlats[flat.flat_number];
               return (
-                <div key={flat.flat_number} className="p-4 hover:bg-slate-50/50 transition-colors">
+                <div key={flat.flat_number} className="p-4 hover:bg-[#FAF9F6] transition-colors">
                   <div
                     onClick={() => toggleFlat(flat.flat_number)}
                     className="flex items-center justify-between cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       {isExpanded ? (
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                        <ChevronDown className="h-4 w-4 text-[#827F76]" />
                       ) : (
-                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                        <ChevronRight className="h-4 w-4 text-[#827F76]" />
                       )}
                       <div>
-                        <div className="font-bold text-xs text-[#18231E]">
+                        <div className="font-bold text-xs text-[#252824]">
                           Flat {flat.flat_number} — {flat.resident_name}
                         </div>
-                        <div className="text-[11px] text-[#718078]">
+                        <div className="text-[11px] text-[#827F76]">
                           {flat.items.length} items requested
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <span className="text-xs font-black text-[#196B48]">
+                      <span className="text-xs font-bold text-[#174D3A]">
                         ₹{flat.final_amount_payable.toFixed(2)}
                       </span>
                       {flat.shared_costs_allocated > 0 && (
-                        <span className="text-[10px] text-slate-400 block">
+                        <span className="text-[10px] text-[#827F76] block">
                           incl. ₹{flat.shared_costs_allocated.toFixed(2)} shared
                         </span>
                       )}
@@ -315,35 +315,35 @@ export const CostAllocationSection: React.FC<CostAllocationSectionProps> = ({
                   </div>
 
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-slate-100 pl-7">
+                    <div className="mt-3 pt-3 border-t border-[#EBE8DF] pl-7">
                       <table className="w-full text-left text-[11px]">
                         <thead>
-                          <tr className="text-[#718078] border-b border-slate-100">
+                          <tr className="text-[#827F76] border-b border-[#EBE8DF]">
                             <th className="py-1">Item</th>
                             <th className="py-1 text-center">Req / Alloc</th>
                             <th className="py-1 text-right">Unit Rate</th>
                             <th className="py-1 text-right">Total</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-[#EBE8DF]/50">
                           {flat.items.map((it, idx) => (
                             <tr key={idx}>
-                              <td className="py-1.5 font-medium text-[#18231E]">
+                              <td className="py-1.5 font-medium text-[#252824]">
                                 {it.item_name}
                                 {it.is_substituted && (
-                                  <span className="text-[9px] text-amber-700 ml-1.5 bg-amber-50 px-1 rounded">Substituted</span>
+                                  <span className="text-[9px] text-amber-800 ml-1.5 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Substituted</span>
                                 )}
                                 {it.is_unfulfilled && (
-                                  <span className="text-[9px] text-rose-700 ml-1.5 bg-rose-50 px-1 rounded">Unavailable</span>
+                                  <span className="text-[9px] text-rose-800 ml-1.5 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Unavailable</span>
                                 )}
                               </td>
-                              <td className="py-1.5 text-center text-[#718078]">
-                                {it.requested_quantity} / <strong className="text-[#18231E]">{it.allocated_quantity} {it.unit}</strong>
+                              <td className="py-1.5 text-center text-[#827F76]">
+                                {it.requested_quantity} / <strong className="text-[#252824]">{it.allocated_quantity} {it.unit}</strong>
                               </td>
-                              <td className="py-1.5 text-right text-[#718078]">
+                              <td className="py-1.5 text-right text-[#827F76]">
                                 ₹{it.unit_price.toFixed(2)}
                               </td>
-                              <td className="py-1.5 text-right font-bold text-[#18231E]">
+                              <td className="py-1.5 text-right font-bold text-[#252824]">
                                 ₹{it.item_total.toFixed(2)}
                               </td>
                             </tr>

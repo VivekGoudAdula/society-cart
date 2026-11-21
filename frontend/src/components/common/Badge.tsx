@@ -2,14 +2,14 @@ import React from 'react';
 
 export interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral';
+  variant?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'sage';
   size?: 'sm' | 'md';
   pulseDot?: boolean;
   className?: string;
 }
 
 /**
- * Reusable Badge for statuses, categories, and tags.
+ * Reusable Badge for statuses, categories, and tags in Pinterest-inspired palette.
  */
 export const Badge: React.FC<BadgeProps> = ({
   children,
@@ -19,19 +19,21 @@ export const Badge: React.FC<BadgeProps> = ({
   className = '',
 }) => {
   const variantStyles = {
-    primary: 'bg-[#EAF5EE] text-[#196B48] border border-[#23865B]/20',
-    success: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    warning: 'bg-amber-50 text-amber-700 border border-amber-200',
-    danger: 'bg-rose-50 text-rose-700 border border-rose-200',
-    neutral: 'bg-slate-100 text-slate-700 border border-slate-200',
+    primary: 'bg-[#EBF2EE] text-[#174D3A] border border-[#174D3A]/15 font-semibold',
+    success: 'bg-emerald-50 text-emerald-800 border border-emerald-200/80',
+    warning: 'bg-amber-50 text-amber-800 border border-amber-200/80',
+    danger: 'bg-rose-50 text-rose-800 border border-rose-200/80',
+    neutral: 'bg-[#F3F0E8] text-[#252824] border border-[#DFDAD0]',
+    sage: 'bg-[#A7B8A0]/15 text-[#174D3A] border border-[#A7B8A0]/30 font-medium',
   };
 
   const dotStyles = {
-    primary: 'bg-[#23865B]',
-    success: 'bg-emerald-500',
-    warning: 'bg-amber-500',
-    danger: 'bg-rose-500',
-    neutral: 'bg-slate-400',
+    primary: 'bg-[#174D3A]',
+    success: 'bg-emerald-600',
+    warning: 'bg-amber-600',
+    danger: 'bg-rose-600',
+    neutral: 'bg-[#827F76]',
+    sage: 'bg-[#174D3A]',
   };
 
   const sizeStyles = {

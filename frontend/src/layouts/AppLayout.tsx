@@ -9,7 +9,7 @@ import { MobileNav } from '../components/navigation/MobileNav';
  */
 export const AppLayout: React.FC = () => {
   return (
-    <div className="flex min-h-screen bg-[#F8FAF9] text-[#18231E]">
+    <div className="flex min-h-screen bg-[#FAF9F6] text-[#252824]">
       {/* Desktop Sidebar */}
       <Sidebar />
 

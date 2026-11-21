@@ -19,6 +19,7 @@ type SetupMode = 'create' | 'join';
 
 /**
  * Screen 2: Create or Join an Apartment Society flow backed by real backend APIs.
+ * Redesigned in warm Pinterest-inspired lifestyle palette.
  */
 export const SocietySetupPage: React.FC = () => {
   const navigate = useNavigate();
@@ -142,52 +143,52 @@ export const SocietySetupPage: React.FC = () => {
 
   if (isSuccess && createdSociety) {
     return (
-      <Card className="text-center p-8 space-y-4 max-w-md mx-auto">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+      <Card className="text-center p-8 sm:p-10 space-y-5 max-w-md mx-auto bg-white border-[#EBE8DF] shadow-lifted">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#EBF2EE] text-[#174D3A] border border-[#174D3A]/20 shadow-xs">
           <CheckCircle2 className="h-8 w-8" />
         </div>
-        <h2 className="text-xl font-bold text-[#18231E]">
+        <h2 className="text-2xl font-bold text-[#252824] tracking-tight">
           {mode === 'create' ? 'Society Created Successfully!' : 'Joined Society Successfully!'}
         </h2>
-        <p className="text-xs text-[#718078] leading-relaxed">
+        <p className="text-xs sm:text-sm text-[#827F76] leading-relaxed">
           {mode === 'create' ? (
             <>
-              Your community <span className="font-bold text-[#18231E]">"{createdSociety.name}"</span> is set up.
-              You have been registered as <span className="font-bold text-[#18231E]">Flat {confirmedFlat} (Admin)</span>.
+              Your community <span className="font-bold text-[#252824]">"{createdSociety.name}"</span> is ready.
+              You have been registered as <span className="font-bold text-[#174D3A]">Flat {confirmedFlat} (Admin)</span>.
             </>
           ) : (
             <>
-              You are now registered as a resident of <span className="font-bold text-[#18231E]">Flat {confirmedFlat}</span> in{' '}
-              <span className="font-bold text-[#18231E]">{createdSociety.name}</span>.
+              You are now registered as a resident of <span className="font-bold text-[#252824]">Flat {confirmedFlat}</span> in{' '}
+              <span className="font-bold text-[#174D3A]">{createdSociety.name}</span>.
             </>
           )}
         </p>
 
         {/* Invite Code Box for Creator */}
         {mode === 'create' && (
-          <div className="rounded-xl border border-dashed border-[#23865B] bg-[#EAF5EE]/40 p-4 space-y-2">
-            <span className="text-[11px] font-semibold text-[#196B48] block">Society Invite Code</span>
+          <div className="rounded-2xl border border-dashed border-[#174D3A]/40 bg-[#FAF9F6] p-4 space-y-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#174D3A] block">Society Invite Code</span>
             <div className="flex items-center justify-center gap-2">
-              <span className="text-lg font-mono font-black text-[#18231E] tracking-widest">
+              <span className="text-xl font-mono font-black text-[#252824] tracking-widest">
                 {createdSociety.invite_code}
               </span>
               <button
                 type="button"
                 onClick={handleCopyInviteCode}
-                className="flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-[#23865B] border border-[#23865B]/30 hover:bg-[#EAF5EE] transition-colors"
+                className="flex items-center gap-1 rounded-xl bg-white px-2.5 py-1 text-xs font-semibold text-[#174D3A] border border-[#DFDAD0] hover:bg-[#EBF2EE] transition-colors shadow-xs"
               >
                 {copiedCode ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 <span>{copiedCode ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-[10px] text-[#718078]">
-              Share this code with your apartment neighbors so they can join this group order.
+            <p className="text-[11px] text-[#827F76]">
+              Share this invite code with apartment neighbors to pool orders in bulk.
             </p>
           </div>
         )}
 
-        <div className="pt-4">
-          <Button variant="primary" className="w-full" onClick={handleFinish}>
+        <div className="pt-2">
+          <Button variant="primary" size="md" className="w-full shadow-md shadow-[#174D3A]/20" onClick={handleFinish}>
             Enter Society Dashboard
           </Button>
         </div>
@@ -197,14 +198,14 @@ export const SocietySetupPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Back to login */}
+      {/* Back to home */}
       <button
         type="button"
         onClick={() => navigate('/')}
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#718078] hover:text-[#18231E] transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827F76] hover:text-[#252824] transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        <span>Back to Login</span>
+        <span>Back to Home</span>
       </button>
 
       {/* Mode Switcher Tabs */}
@@ -215,10 +216,10 @@ export const SocietySetupPage: React.FC = () => {
             setMode('create');
             setError('');
           }}
-          className={`flex items-center justify-center gap-2 rounded-xl p-3.5 text-xs font-bold transition-all border ${
+          className={`flex items-center justify-center gap-2 rounded-2xl p-3.5 text-xs font-bold transition-all border ${
             mode === 'create'
-              ? 'border-[#23865B] bg-[#EAF5EE] text-[#196B48] shadow-xs'
-              : 'border-[#E6ECE8] bg-white text-[#718078] hover:bg-slate-50'
+              ? 'border-[#174D3A] bg-[#EBF2EE] text-[#174D3A] shadow-xs'
+              : 'border-[#DFDAD0] bg-white text-[#827F76] hover:bg-[#FAF9F6]'
           }`}
         >
           <Building2 className="h-4 w-4" />
@@ -231,10 +232,10 @@ export const SocietySetupPage: React.FC = () => {
             setMode('join');
             setError('');
           }}
-          className={`flex items-center justify-center gap-2 rounded-xl p-3.5 text-xs font-bold transition-all border ${
+          className={`flex items-center justify-center gap-2 rounded-2xl p-3.5 text-xs font-bold transition-all border ${
             mode === 'join'
-              ? 'border-[#23865B] bg-[#EAF5EE] text-[#196B48] shadow-xs'
-              : 'border-[#E6ECE8] bg-white text-[#718078] hover:bg-slate-50'
+              ? 'border-[#174D3A] bg-[#EBF2EE] text-[#174D3A] shadow-xs'
+              : 'border-[#DFDAD0] bg-white text-[#827F76] hover:bg-[#FAF9F6]'
           }`}
         >
           <Users className="h-4 w-4" />
@@ -243,12 +244,12 @@ export const SocietySetupPage: React.FC = () => {
       </div>
 
       {/* Form Card */}
-      <Card className="p-6 sm:p-8">
+      <Card className="p-6 sm:p-8 bg-white border-[#EBE8DF] shadow-card">
         <div className="mb-6">
-          <h2 className="text-lg font-bold text-[#18231E]">
+          <h2 className="text-xl font-bold text-[#252824] tracking-tight">
             {mode === 'create' ? 'Create a Society Group' : 'Join Existing Apartment'}
           </h2>
-          <p className="text-xs text-[#718078] mt-1">
+          <p className="text-xs sm:text-sm text-[#827F76] mt-1">
             {mode === 'create'
               ? 'Set up your apartment community to begin coordinating group orders.'
               : 'Enter the invite code shared by your society volunteer or neighbor.'}
@@ -258,8 +259,8 @@ export const SocietySetupPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* User Account Fields (if user is not authenticated yet) */}
           {!isAuthenticated && (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 mb-2">
-              <span className="text-xs font-bold text-[#18231E] block">Your Account Details</span>
+            <div className="p-4 rounded-2xl bg-[#FAF9F6] border border-[#EBE8DF] space-y-3 mb-2">
+              <span className="text-xs font-bold text-[#252824] block">Your Account Details</span>
               <Input
                 label="Your Full Name"
                 value={authName}
@@ -337,7 +338,7 @@ export const SocietySetupPage: React.FC = () => {
                 onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
                 placeholder="e.g. SC-A8F2 or GFH-2026"
                 required
-                leftIcon={<KeyRound className="h-4 w-4 text-[#718078]" />}
+                leftIcon={<KeyRound className="h-4 w-4 text-[#827F76]" />}
               />
 
               <Input
@@ -351,12 +352,12 @@ export const SocietySetupPage: React.FC = () => {
           )}
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-[#D9534F] font-semibold">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 font-semibold">
               {error}
             </div>
           )}
 
-          <Button type="submit" variant="primary" className="w-full" isLoading={isLoading}>
+          <Button type="submit" variant="primary" className="w-full mt-2 shadow-sm shadow-[#174D3A]/20" isLoading={isLoading}>
             {mode === 'create' ? 'Create Society & Generate Code' : 'Join Society'}
           </Button>
         </form>

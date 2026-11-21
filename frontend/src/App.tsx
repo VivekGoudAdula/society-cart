@@ -22,9 +22,11 @@ export default function App(): React.JSX.Element {
       <ChatProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public / Auth Flows */}
+            {/* Public Landing Page (Full-Width Editorial Lifestyle UI) */}
+            <Route path="/" element={<WelcomePage />} />
+
+            {/* Society Setup / Onboarding Flow */}
             <Route element={<AuthLayout />}>
-              <Route path="/" element={<WelcomePage />} />
               <Route path="/society-setup" element={<SocietySetupPage />} />
             </Route>
 

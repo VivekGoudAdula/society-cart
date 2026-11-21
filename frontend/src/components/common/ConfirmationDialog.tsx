@@ -37,8 +37,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         >
           <AlertTriangle className="h-6 w-6" />
         </div>
-        <h4 className="text-base font-bold text-[#18231E]">{title}</h4>
-        <p className="mt-2 text-xs text-[#718078] leading-relaxed">{message}</p>
+        <h4 className="text-base font-bold text-[#252824]">{title}</h4>
+        <p className="mt-2 text-xs text-[#827F76] leading-relaxed">{message}</p>
 
         <div className="mt-6 flex w-full items-center justify-center gap-3">
           <Button variant="outline" size="sm" onClick={onClose} className="w-1/2">
