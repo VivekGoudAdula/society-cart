@@ -238,9 +238,9 @@ export const WelcomePage: React.FC = () => {
       </header>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 2. HERO SECTION (MATCHING USER REFERENCE IMAGE) */}
+      {/* 2. HERO SECTION (16:9 PROPORTIONED, MATCHING USER REFERENCE IMAGE) */}
       {/* ------------------------------------------------------------------- */}
-      <section className="relative overflow-hidden pt-12 pb-20 md:pt-16 md:pb-28">
+      <section className="relative overflow-hidden min-h-[calc(100vh-5rem)] flex flex-col justify-center py-8 sm:py-10">
         {/* Background sunset & apartment image: bg.png */}
         <div
           className="absolute inset-0 z-0 bg-cover bg-no-repeat pointer-events-none"
@@ -253,9 +253,9 @@ export const WelcomePage: React.FC = () => {
         <div className="absolute inset-0 z-0 bg-gradient-to-b from-white via-white/80 to-transparent pointer-events-none" />
         <div className="absolute inset-0 z-0 bg-gradient-to-t from-[#FAF9F6] via-transparent to-transparent pointer-events-none" />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center my-auto">
           {/* Main Headline with Sans & Italic Serif Contrast */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-[#18181b] leading-[1.1] max-w-4xl mx-auto">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#18181b] leading-[1.12] max-w-4xl mx-auto">
             Your Society. One Chat.
             <span className="font-serif italic font-normal text-[#18181b] block mt-1">
               One Bulk Order.
@@ -263,25 +263,15 @@ export const WelcomePage: React.FC = () => {
           </h1>
 
           {/* Supporting Text */}
-          <p className="mt-5 text-sm sm:text-base md:text-lg text-[#374151] max-w-2xl mx-auto font-normal leading-relaxed">
+          <p className="mt-4 text-sm sm:text-base md:text-lg text-[#374151] max-w-2xl mx-auto font-normal leading-relaxed">
             Drop grocery needs in English, Telugu, or Hindi in your apartment group
             chat. AI structures every order so volunteers buy once in bulk.
           </p>
 
-          {/* Single Black Pill CTA Button */}
-          <div className="mt-7 flex items-center justify-center">
-            <button
-              onClick={() => handleOpenAuth('register')}
-              className="rounded-full bg-[#18181b] hover:bg-black text-white px-8 py-3 text-sm font-semibold transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0"
-            >
-              Start Your Society
-            </button>
-          </div>
-
           {/* --------------------------------------------------------------- */}
           {/* 3 FLOATING INTERACTIVE HERO PREVIEWS (MATCHING REFERENCE IMAGE) */}
           {/* --------------------------------------------------------------- */}
-          <div className="mt-14 sm:mt-20 flex flex-col md:flex-row items-center justify-center gap-4 sm:gap-5 max-w-4xl mx-auto">
+          <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-center gap-4 sm:gap-5 max-w-4xl mx-auto">
             {/* Card 1: Resident Avatar / Ordering Groceries */}
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-[#D6E6DE] border border-white/70 shadow-lg p-3 flex flex-col justify-end items-center relative overflow-hidden backdrop-blur-xs shrink-0">
               <div className="absolute inset-0 bg-gradient-to-t from-[#BCCFC5] to-[#E3EFE9]" />
