@@ -240,20 +240,29 @@ export const WelcomePage: React.FC = () => {
       </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 2. HERO SECTION (16:9 PROPORTIONED, MATCHING USER REFERENCE IMAGE) */}
+      {/* 2. HERO SECTION (16:9 PROPORTIONED, TASTEFUL TOP & BOTTOM EDGE BLEND) */}
       {/* ------------------------------------------------------------------- */}
-      <section className="relative overflow-hidden min-h-[calc(100vh-5rem)] flex flex-col justify-center py-8 sm:py-10">
+      <section className="relative overflow-hidden min-h-[calc(100vh-6rem)] flex flex-col justify-center py-6 sm:py-8">
         {/* Background sunset & apartment image: bg.png */}
         <div
-          className="absolute inset-0 z-0 bg-cover bg-no-repeat pointer-events-none"
+          className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
           style={{
             backgroundImage: "url('/bg.png')",
-            backgroundPosition: 'center bottom',
+            backgroundPosition: 'center 45%',
           }}
         />
-        {/* Top-to-bottom fade: pure white at top behind title/subhead, fading down so sunset clouds & apartments emerge */}
-        <div className="absolute inset-0 z-0 bg-gradient-to-b from-white via-white/80 to-transparent pointer-events-none" />
-        <div className="absolute inset-0 z-0 bg-gradient-to-t from-[#FAF9F6] via-transparent to-transparent pointer-events-none" />
+
+        {/* Top subtle sky-blue atmosphere fade: keeps the natural blue dusk sky tone intact */}
+        <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-gradient-to-b from-[#96B3C8]/35 via-[#96B3C8]/10 to-transparent pointer-events-none z-0" />
+
+        {/* Bottom minimal fade: low height to gently soften the bottom edge without covering buildings */}
+        <div className="absolute inset-x-0 bottom-0 h-12 sm:h-16 bg-gradient-to-t from-[#FAF9F6] to-transparent pointer-events-none z-0" />
+
+        {/* Top subtle sky-blue atmosphere fade: keeps the natural blue dusk sky tone intact */}
+        <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-gradient-to-b from-[#96B3C8]/35 via-[#96B3C8]/10 to-transparent pointer-events-none z-0" />
+
+        {/* Bottom minimal fade: low height to gently soften the bottom edge without covering buildings */}
+        <div className="absolute inset-x-0 bottom-0 h-12 sm:h-16 bg-gradient-to-t from-[#FAF9F6] to-transparent pointer-events-none z-0" />
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center my-auto">
           {/* Main Headline with Sans & Italic Serif Contrast */}
@@ -274,20 +283,24 @@ export const WelcomePage: React.FC = () => {
           {/* 3 FLOATING INTERACTIVE HERO PREVIEWS (MATCHING REFERENCE IMAGE) */}
           {/* --------------------------------------------------------------- */}
           <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-center gap-4 sm:gap-5 max-w-4xl mx-auto">
-            {/* Card 1: Resident Avatar / Ordering Groceries */}
-            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-[#D6E6DE] border border-white/70 shadow-lg p-3 flex flex-col justify-end items-center relative overflow-hidden backdrop-blur-xs shrink-0">
-              <div className="absolute inset-0 bg-gradient-to-t from-[#BCCFC5] to-[#E3EFE9]" />
-              {/* Resident illustration with green shirt & laptop */}
+            {/* Card 1: Resident Ordering on Laptop */}
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-[#E2EEE8] to-[#CFE2D8] border border-white/80 shadow-lg p-3 flex flex-col justify-end items-center relative overflow-hidden backdrop-blur-xs shrink-0">
+              {/* Refined vector illustration of young resident on laptop */}
               <div className="relative z-10 w-full flex flex-col items-center">
-                {/* Person Head & Torso */}
-                <div className="w-10 h-10 rounded-full bg-[#E5B594] border-2 border-[#D89B75] mb-1 relative overflow-hidden shadow-xs">
-                  {/* Hair */}
-                  <div className="absolute top-0 left-0 right-0 h-4 bg-[#2C211A] rounded-t-full" />
-                </div>
-                <div className="w-16 h-8 bg-[#3E7356] rounded-t-2xl flex items-center justify-center relative">
-                  {/* Laptop */}
-                  <div className="w-12 h-2.5 bg-slate-300 rounded-xs border-t border-white/80 shadow-xs translate-y-1" />
-                </div>
+                <svg viewBox="0 0 80 72" className="w-20 h-18 drop-shadow-xs" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {/* Head & Neck */}
+                  <circle cx="40" cy="22" r="12" fill="#E8B896" />
+                  {/* Modern Hair */}
+                  <path d="M28 20C28 12 33 9 42 9C49 9 52 13 52 18C52 21 50 22 47 22C44 22 43 17 38 17C33 17 31 22 28 20Z" fill="#29201A" />
+                  {/* Torso in Forest Green Tee */}
+                  <path d="M22 62C22 45 28 38 40 38C52 38 58 45 58 62H22Z" fill="#174D3A" />
+                  {/* White Collar Accent */}
+                  <path d="M36 38C36 41 38 43 40 43C42 43 44 41 44 38H36Z" fill="#FAF9F6" />
+                  {/* Laptop base */}
+                  <rect x="25" y="58" width="30" height="5" rx="1.5" fill="#CBD5E1" />
+                  <rect x="30" y="52" width="20" height="7" rx="1" fill="#94A3B8" />
+                  <line x1="38" y1="55" x2="42" y2="55" stroke="#FFFFFF" strokeWidth="1" strokeLinecap="round" />
+                </svg>
               </div>
             </div>
 
