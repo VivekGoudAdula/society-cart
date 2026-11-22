@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { AppProvider } from './context/AppContext';
 import { ChatProvider } from './context/ChatContext';
 import { AuthLayout } from './layouts/AuthLayout';
@@ -42,6 +43,7 @@ export default function App(): React.JSX.Element {
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <Analytics />
         </BrowserRouter>
       </ChatProvider>
     </AppProvider>
